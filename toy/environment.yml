@@ -1,0 +1,9 @@
+name: enfield
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - opacus==1.5.4
+      - torchvision==0.22.1
