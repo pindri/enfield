@@ -1,67 +1,119 @@
 import math
+from typing import Any, Dict, Tuple, Union
 
 import torch
-
-from conformal import split_conformal_threshold
-
 
 # -----------------------------
 # DP calibration via histogram quantile.
 # -----------------------------
 def dp_histogram_quantile_threshold(
-        scores: torch.Tensor,
-        alpha: float,
-        eps_cal: float,
-        num_bins: int = 200,
-        seed: int = 0,
-) -> float:
+    scores: torch.Tensor,
+    alpha: float,
+    eps_cal: float,
+    num_bins: int = 100,
+    beta: float = 1e-3,
+    seed: int = 0,
+    return_info: bool = False,
+) -> Union[float, Tuple[float, Dict[str, Any]]]:
     """
-    Approx DP threshold:
-    - Bin scores in [0,1] into num_bins.
-    - Add iid Laplace noise with scale 1/eps_cal to each bin count (vector Laplace mechanism under L1 sensitivity=1).
-    - Build noisy CDF.
-    - Take the conservative conformal rank k = ceil((m+1)*(1-alpha)) and find smallest bin whose noisy CDF >= k.
+    Differentially private conformal threshold via noisy cumulative counts
+    on a fixed public grid.
 
-    Returns:
-      tau_dp in [0,1]
+    Mechanism:
+    - Scores are assumed to lie in [0, 1].
+    - Define a public grid t_b = b / B for b = 1, ..., B.
+    - For each grid point, compute the cumulative count
+          N_b = #{i : score_i <= t_b}.
+    - Release a noisy version of the cumulative-count vector using iid
+      Laplace noise with scale B / eps_cal, which gives eps_cal-DP under
+      add/remove adjacency by the vector Laplace mechanism.
+    - Select the first grid point whose noisy cumulative count exceeds the
+      conservative target k + lambda.
+
+    Formal guarantee:
+    Let k = ceil((m + 1) * (1 - alpha)) and
+        lambda = (B / eps_cal) * log(B / beta).
+    Then, with probability at least 1 - beta, the selected threshold has
+    true cumulative count at least k.
+    For APS with the score used in conformal.py, one has the one-sided implication
+        score(x, y) <= tau  ==>  y in APS_set_tau(x).
+
+    Combined with exchangeability, this yields the formal lower bound
+        P(Y in C_APS(X; tau_hat)) >= 1 - alpha - beta.
+
+    Notes:
+    - This mechanism is (intentionally, because I can't do better now) conservative.
+    - Larger num_bins or smaller eps_cal increase the safety margin and
+      therefore can increase prediction set size.
+    - This version is designed so that the code matches a simple theorem
+      cleanly for toy experiments.
     """
-    assert eps_cal > 0, "eps_cal must be > 0"
-    gen = torch.Generator()
-    gen.manual_seed(seed)
+    if not (0.0 < alpha < 1.0):
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
+    if eps_cal <= 0.0:
+        raise ValueError(f"eps_cal must be > 0, got {eps_cal}")
+    if num_bins < 1:
+        raise ValueError(f"num_bins must be >= 1, got {num_bins}")
+    if not (0.0 < beta < 1.0):
+        raise ValueError(f"beta must be in (0, 1), got {beta}")
 
-    scores = scores.detach().cpu().clamp(0.0, 1.0)
-    m = scores.numel()
-    k = int(math.ceil((m + 1) * (1 - alpha)))
+    scores = scores.detach().cpu().float().clamp(0.0, 1.0)
+    m = int(scores.numel())
+    if m == 0:
+        raise ValueError("scores must be non-empty")
+
+    B = int(num_bins)
+    k = int(math.ceil((m + 1) * (1.0 - alpha)))
     k = min(max(k, 1), m)
 
-    # Histogram counts
-    # Map score to bin index in [0, num_bins-1]
-    bin_idx = torch.clamp((scores * num_bins).long(), 0, num_bins - 1)
-    counts = torch.bincount(bin_idx, minlength=num_bins).float()
+    # Public grid: t_b = b / B, b = 1, ..., B.
+    grid = torch.arange(1, B + 1, dtype=torch.float32) / float(B)
 
-    # Laplace noise
-    # Sample Laplace(0, 1/eps) as: sign * Exp(scale) difference
-    # PyTorch doesn't have Laplace on all versions; implement manually.
-    scale = 1.0 / eps_cal
-    u = torch.rand(num_bins, generator=gen) - 0.5
-    noise = -scale * torch.sign(u) * torch.log1p(-2 * torch.abs(u))  # inverse CDF
-    noisy = counts + noise
+    # Exact cumulative counts N_b = #{i : score_i <= t_b}.
+    counts_cdf = (scores[:, None] <= grid[None, :]).sum(dim=0).float()
 
-    # Clamp to nonnegative to form a "reasonable" CDF for the toy
-    noisy = torch.clamp(noisy, min=0.0)
-    cdf = torch.cumsum(noisy, dim=0)
+    # Vector Laplace mechanism with l1 sensitivity B.
+    noise_scale = float(B) / float(eps_cal)
+    gen = torch.Generator()
+    gen.manual_seed(seed)
+    noise = _laplace_noise((B,), scale=noise_scale, generator=gen)
+    noisy_cdf = counts_cdf + noise
 
-    # If total mass vanished due to clamping (rare but possible for tiny m and small eps), fallback
-    total = cdf[-1].item()
-    if total <= 1e-6:
-        # fallback to non-private threshold to avoid NaNs; still signals instability in logs
-        return split_conformal_threshold(scores, alpha)
+    # Conservative one-sided margin from a union bound over all B bins.
+    lam = noise_scale * math.log(float(B) / float(beta))
+    target = float(k) + float(lam)
 
-    # Find smallest bin where cdf >= k (k is in "counts" units)
-    # If noisy total < k (possible), use last bin
-    target = float(k)
-    idx = int(torch.searchsorted(cdf, torch.tensor(target)).clamp(0, num_bins - 1).item())
+    # Select the first grid point whose noisy cumulative count crosses target.
+    crossing = torch.nonzero(noisy_cdf >= target, as_tuple=False)
+    if crossing.numel() == 0:
+        idx = B - 1  # Fallback to tau = 1.
+    else:
+        idx = int(crossing[0].item())
 
-    # Convert bin index to tau: use upper edge of the bin (conservative)
-    tau = (idx + 1) / num_bins
-    return float(min(max(tau, 0.0), 1.0))
+    tau = float(grid[idx].item())
+
+    if not return_info:
+        return tau
+
+    info: Dict[str, Any] = {
+        "m": m,
+        "k": k,
+        "alpha": float(alpha),
+        "beta": float(beta),
+        "eps_cal": float(eps_cal),
+        "num_bins": B,
+        "noise_scale": float(noise_scale),
+        "lambda": float(lam),
+        "tau": float(tau),
+    }
+    return tau, info
+
+
+def _laplace_noise(shape, scale: float, generator: torch.Generator) -> torch.Tensor:
+    """
+    Sample iid Laplace(0, scale) noise using inverse CDF sampling.
+    """
+    u = torch.rand(shape, generator=generator) - 0.5
+    return -scale * torch.sign(u) * torch.log1p(-2 * torch.abs(u))
+
+
