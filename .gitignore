@@ -1,3 +1,4 @@
-*_out/
+*_out*/
 *.idea/
 *__pycache__/
+*data/

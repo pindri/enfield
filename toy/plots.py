@@ -1,5 +1,3 @@
-# from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
@@ -8,6 +6,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+from matplotlib.colors import TwoSlopeNorm
 from utils import ensure_dir, make_reproducible
 
 
@@ -154,14 +153,15 @@ def plot_contract_heatmap(
     outpath: str | Path,
     value_col: str,
     beta: float,
-    cal_size: int,
+    cal_size: int | None = None,
     epsilon_train_target: float | None = None,
     epsilon_cal: float | None = None,
     aggregate: str = "mean",
 ) -> None:
     dff = df.copy()
     dff = dff[np.isclose(dff["beta"], beta)]
-    dff = dff[dff["cal_size"] == cal_size]
+    if cal_size is not None:
+        dff = dff[dff["cal_size"] == cal_size]
 
     if epsilon_train_target is not None:
         dff = dff[np.isclose(dff["epsilon_train_target"], epsilon_train_target)]
@@ -189,8 +189,12 @@ def plot_contract_heatmap(
     ).sort_index().sort_index(axis=1)
 
     plt.figure(figsize=(7, 5))
+    vmin = min(0, np.nanmin(pivot.values))
+    vmax = min(1, np.nanmax(pivot.values))
+    norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
     im = plt.imshow(pivot.values, aspect="auto", interpolation="nearest",
-                    vmin=0.0, vmax=1.0, cmap="viridis"
+                    cmap="RdYlGn", norm=norm,
+                    # vmin=-1.0, vmax=1.0, cmap="viridis"
                     )
 
     plt.xticks(range(len(pivot.columns)), [str(x) for x in pivot.columns])
@@ -287,16 +291,17 @@ def plot_contract_feasibility_map(
     outpath: str | Path,
     value_col: str,
     beta: float,
-    cal_size: int,
+    cal_size: int | None = None,
     epsilon_train_target: float | None = None,
     epsilon_cal: float | None = None,
     aggregate: str = "all",
-    filter_impossible: bool = False,
+    mask_formally_infeasible: bool = False,
 ) -> None:
 
     dff = df.copy()
     dff = dff[np.isclose(dff["beta"], beta)]
-    dff = dff[dff["cal_size"] == cal_size]
+    if cal_size is not None:
+        dff = dff[dff["cal_size"] == cal_size]
 
     if epsilon_train_target is not None:
         dff = dff[np.isclose(dff["epsilon_train_target"], epsilon_train_target)]
@@ -307,8 +312,10 @@ def plot_contract_feasibility_map(
         raise ValueError("No rows remain after filtering")
 
     # To exclude absolutely impossible settings from the plot.
-    if filter_impossible:
-        dff = dff[dff["nominal_coverage"] > dff["coverage_target"]]
+    # if filter_impossible:
+    #     dff = dff[dff["nominal_coverage"] - dff["beta"] >= dff["coverage_target"]]
+    if mask_formally_infeasible:
+        dff = dff[dff["coverage_lower_bound_formal"] >= dff["coverage_target"]]
 
     grouped = dff.groupby(
         ["nominal_coverage", "coverage_target"], as_index=False
@@ -329,7 +336,7 @@ def plot_contract_feasibility_map(
 
     plt.figure(figsize=(7, 5))
     plt.imshow(pivot.values, aspect="auto", interpolation="nearest",
-               vmin=0.0, vmax=1.0, cmap="viridis"
+               vmin=-1.0, vmax=1.0, cmap="viridis"
                )
 
     plt.xticks(range(len(pivot.columns)), [str(x) for x in pivot.columns])
@@ -360,7 +367,7 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_dir", type=str, default="data")
-    ap.add_argument("--analysis_out_dir", type=str, default="analysis_out")
+    ap.add_argument("--analysis_out_dir", type=str, default="analysis")
     ap.add_argument("--out_dir", type=str, default="toy_out")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--verbose", action="store_true")
@@ -399,10 +406,10 @@ def main() -> None:
 
     dff = filter_df(
         df,
-        nominal_coverage=0.91,
-        coverage_target=0.90,
+        nominal_coverage=0.90,
+        coverage_target=0.89,
         beta=1e-3,
-        cal_size=10000,
+        cal_size=500,
     )
 
     # Plot figures.
@@ -411,49 +418,42 @@ def main() -> None:
     # plot_accuracy_vs_epsilon_train(dff, f"{analysis_out_dir}/accuracy_vs_epsilon_train.png")
 
     # Should have sharp boundaries.
+    cal_size = None
+    cal_size = 500
+    beta = 1e-3
+    epsilon_cal = None
+    epsilon_cal = 0.1
     plot_contract_feasibility_map(
         df,
-        f"{analysis_out_dir}/formal_contract_map.png",
+        f"{analysis_out_dir}/formal_contract_map_ecal_{epsilon_cal}_calsize_{cal_size}.png",
         value_col="overall_formal_ok",
-        beta=1e-3,
-        cal_size=500,
+        beta=beta,
+        cal_size=cal_size,
         epsilon_train_target=1.0,
-        epsilon_cal=0.25,
+        epsilon_cal=epsilon_cal,
         aggregate="all",
     )
 
     plot_contract_feasibility_map(
         df,
-        f"{analysis_out_dir}/empirical_contract_map.png",
+        f"{analysis_out_dir}/empirical_contract_map_ecal_{epsilon_cal}_calsize_{cal_size}.png",
         value_col="overall_empirical_ok",
-        beta=1e-3,
-        cal_size=500,
+        beta=beta,
+        cal_size=cal_size,
         epsilon_train_target=1.0,
-        epsilon_cal=0.25,
+        epsilon_cal=epsilon_cal,
         aggregate="mean",
-        filter_impossible=True,
-    )
-
-    plot_contract_feasibility_map(
-        df,
-        f"{analysis_out_dir}/empirical_contract_combined_map.png",
-        value_col="overall_empirical_contract_ok",
-        beta=1e-3,
-        cal_size=500,
-        epsilon_train_target=1.0,
-        epsilon_cal=0.25,
-        aggregate="mean",
-        filter_impossible=True,
+        mask_formally_infeasible=True,
     )
 
     plot_contract_heatmap(
         df,
-        f"{analysis_out_dir}/empirical_margin_to_target_map.png",
+        f"{analysis_out_dir}/empirical_margin_to_target_map_ecal_{epsilon_cal}_calsize_{cal_size}.png",
         value_col="empirical_margin_to_target",
-        beta=1e-3,
-        cal_size=500,
+        beta=beta,
+        cal_size=cal_size,
         epsilon_train_target=1.0,
-        epsilon_cal=0.25,
+        epsilon_cal=epsilon_cal,
         aggregate="mean",
     )
 
