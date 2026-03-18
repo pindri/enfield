@@ -55,7 +55,9 @@ def main():
     ap.add_argument("--verbose", action="store_true")
 
     # "Contract-like" knobs.
-    ap.add_argument("--coverage", type=float, default=0.90)
+    # ap.add_argument("--coverage", type=float, default=0.90)
+    ap.add_argument("--coverage_target", type=float, default=0.90)
+    ap.add_argument("--nominal_coverage", type=float, default=0.91)
     ap.add_argument("--dp_train_eps", type=float, default=4.0)
     ap.add_argument("--dp_delta", type=float, default=1e-5)
     ap.add_argument("--dp_cal_eps", type=float, default=1.0)
@@ -95,24 +97,18 @@ def main():
     test_loader = DataLoader(ds_test, batch_size=args.batch_size, shuffle=False,
                              num_workers=2, pin_memory=(device == "cuda"))
 
-    alpha = 1.0 - args.coverage
+    nominal_coverage = float(args.nominal_coverage)
+    requested_coverage_target = float(args.coverage_target)
 
+    alpha = 1.0 - nominal_coverage
     coverage_lb_formal = max(0.0, 1.0 - alpha - args.beta)
 
-    # contract = Contract(
-    #     epsilon_train=float(args.dp_train_eps),
-    #     delta=float(args.dp_delta),
-    #     epsilon_cal=float(args.dp_cal_eps),
-    #     coverage_target=float(args.coverage),
-    #     alpha=float(alpha),
-    #     num_bins=int(args.num_bins),
-    # )
-    #
     contract = Contract(
         epsilon_train=float(args.dp_train_eps),
         delta=float(args.dp_delta),
         epsilon_cal=float(args.dp_cal_eps),
-        coverage_target=float(coverage_lb_formal),
+        # coverage_target=float(coverage_lb_formal),
+        coverage_target=requested_coverage_target,
         alpha=float(alpha),
         num_bins=int(args.num_bins),
     )
@@ -128,6 +124,9 @@ def main():
             "epochs_dp": args.epochs_dp,
             "cal_size": cal_size,
             "train_size": train_size,
+            "nominal_coverage": nominal_coverage,
+            "coverage_target": requested_coverage_target,
+            "beta": float(args.beta),
         },
     }
 
@@ -232,23 +231,10 @@ def main():
     )
     eval_dp_dpcal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_cal, device)
 
-
-    # print("\n[stage] dp calibration (dp histogram quantile threshold)")
-    # tau_dp_cal = dp_histogram_quantile_threshold(
-    #     scores=scores_cal_dp,
-    #     alpha=alpha,
-    #     eps_cal=args.dp_cal_eps,
-    #     num_bins=args.num_bins,
-    #     seed=args.seed,
-    # )
-    # eval_dp_dpcal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_cal, device)
-    #
-    # # TODO: Not a fully rigorous bound here, for now just a placeholder to keep artifact structure.
-    # # Mostly to sanity check that things behave ok.
-    # coverage_lb_placeholder = max(0.0, eval_dp_dpcal["coverage"] - 0.02)
-
     report["dp_calibration"] = {
         "epsilon_cal": float(args.dp_cal_eps),
+        "nominal_coverage": nominal_coverage,
+        "coverage_target": requested_coverage_target,
         "beta": float(args.beta),
         "num_bins": int(args.num_bins),
         "k": int(dpcal_info["k"]),
@@ -258,6 +244,7 @@ def main():
         "test_coverage_dp_cal": eval_dp_dpcal["coverage"],
         "avg_set_size_dp_cal": eval_dp_dpcal["avg_set_size"],
         "coverage_lower_bound_formal": coverage_lb_formal,
+        "requested_coverage_target": requested_coverage_target,
         "mechanism": "Laplace-noisy cumulative counts on a fixed public grid",
         "guarantee": "P(Y in C_APS(X; tau_hat)) >= 1 - alpha - beta",
     }
@@ -275,15 +262,26 @@ def main():
     # -----------------------------
     # 4) Contract-style PASS/FAIL checks.
     # -----------------------------
+
+    coverage_bound_formal_ok = coverage_lb_formal >= requested_coverage_target
+    coverage_ok_empirical = eval_dp_dpcal["coverage"] >= requested_coverage_target
+
     report["pass_fail"] = {
         "privacy_training_ok": eps_realized <= args.dp_train_eps + 1e-6,
         "privacy_total_basic_composition_ok":
             (eps_realized + float(args.dp_cal_eps)) <= (args.dp_train_eps + float(args.dp_cal_eps) + 1e-6),
-        "coverage_ok_empirical": eval_dp_dpcal["coverage"] >= coverage_lb_formal,
-        "coverage_bound_formal_ok": True,  # Here if I pass c as a parameter too, then this could fail.
+        # Formal check: theorem-certified lower bound meets the requested target.
+        "coverage_bound_formal_ok": coverage_bound_formal_ok,
+        # Empirical check: observed test coverage meets the requested target.
+        "coverage_ok_empirical": coverage_ok_empirical,
+        # Formal feasibility should use the formal bound, not empirical coverage.
         "overall_formal_ok":
             (eps_realized <= args.dp_train_eps + 1e-6)
-            and (eval_dp_dpcal["coverage"] >= coverage_lb_formal),
+            and coverage_bound_formal_ok,
+        # Optional extra diagnostic.
+        "overall_empirical_ok":
+            (eps_realized <= args.dp_train_eps + 1e-6)
+            and coverage_ok_empirical,
     }
 
     # Lightweight "hashes" for things to look proper.
@@ -293,7 +291,16 @@ def main():
         "script_sha256": sha256_of_text(open(__file__, "r", encoding="utf-8").read()),
     }
 
-    outpath = os.path.join(args.out_dir, f"report_traineps_{args.dp_train_eps}_caleps_{args.dp_cal_eps}_calsize_{args.cal_size}.json")
+    outpath = os.path.join(
+        args.out_dir,
+        f"report_traineps_{args.dp_train_eps}"
+        f"_caleps_{args.dp_cal_eps}"
+        f"_calsize_{args.cal_size}"
+        f"_nomcov_{args.nominal_coverage}"
+        f"_target_{args.coverage_target}"
+        f"_beta_{args.beta}"
+        f"_seed_{args.seed}.json"
+    )
     with open(outpath, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, sort_keys=True)
 
