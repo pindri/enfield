@@ -58,6 +58,7 @@ def main():
 
     # Calibration split.
     ap.add_argument("--cal_size", type=int, default=10000)  # MNIST has 60K data points.
+
     args = ap.parse_args()
 
     ensure_dir(args.out_dir)
@@ -72,7 +73,11 @@ def main():
         tfm = transforms.Compose([transforms.ToTensor()])
         DatasetClass = datasets.MNIST if args.dataset == "mnist" else datasets.FashionMNIST
     else:
-        tfm = transforms.Compose([transforms.ToTensor()])
+        tfm = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2470, 0.2435, 0.2616)),
+        ])
         DatasetClass = datasets.CIFAR10
 
     ds_train_full = DatasetClass(root=args.data_dir, train=True, download=True, transform=tfm)
@@ -141,7 +146,11 @@ def main():
     # -----------------------------
     print("\n[stage] non-private training")
     # model_np = TinyMLP().to(device)
-    opt_np = torch.optim.SGD(model_np.parameters(), lr=0.2, momentum=0.9)
+    if args.dataset == "cifar10":
+        opt_np = torch.optim.Adam(model_np.parameters(), lr=1e-3)
+    else:
+        opt_np = torch.optim.SGD(model_np.parameters(), lr=0.2, momentum=0.9)
+
 
     for ep in range(args.epochs_np):
         loss = train_epoch(model_np, train_loader, opt_np, device)
@@ -158,7 +167,8 @@ def main():
           "p90", float(scores_cal_np.kthvalue(int(0.9*len(scores_cal_np))).values),
           "max", float(scores_cal_np.max()))
     tau_np = split_conformal_threshold(scores_cal_np, alpha)
-    eval_np = evaluate_coverage_aps(model_np, test_loader, tau_np, device)
+    # eval_np = evaluate_coverage_aps(model_np, test_loader, tau_np, device)
+    eval_np = evaluate_coverage_aps(model_np, test_loader, tau_np, device, temperature=args.temperature)
 
     if args.verbose:
         print("min_set_size_check:",
@@ -179,7 +189,10 @@ def main():
     # -----------------------------
     print("\n[stage] dp training")
     # model_dp = TinyMLP().to(device)
-    opt_dp = torch.optim.SGD(model_dp.parameters(), lr=0.2, momentum=0.9)
+    if args.dataset == "cifar10":
+        opt_dp = torch.optim.SGD(model_dp.parameters(), lr=0.02, momentum=0.9)
+    else:
+        opt_dp = torch.optim.SGD(model_dp.parameters(), lr=0.2, momentum=0.9)
 
     privacy_engine = PrivacyEngine()
 
@@ -218,7 +231,8 @@ def main():
         f"score_(k+5)={sorted_scores[min(k+4,m-1)].item():.6f}"
     )
     tau_dp_nonpriv_cal = split_conformal_threshold(scores_cal_dp, alpha)
-    eval_dp_nonpriv_cal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_nonpriv_cal, device)
+    # eval_dp_nonpriv_cal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_nonpriv_cal, device)
+    eval_dp_nonpriv_cal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_nonpriv_cal, device, temperature=args.temperature)
 
     report["dp_training"] = {
         "epsilon_target": float(args.dp_train_eps),
@@ -247,7 +261,8 @@ def main():
         seed=args.seed,
         return_info=True,
     )
-    eval_dp_dpcal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_cal, device)
+    # eval_dp_dpcal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_cal, device)
+    eval_dp_dpcal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_cal, device, temperature=args.temperature)
 
     report["dp_calibration"] = {
         "epsilon_cal": float(args.dp_cal_eps),

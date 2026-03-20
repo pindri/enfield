@@ -444,7 +444,7 @@ def main() -> None:
         epsilon_train_target=epsilon_train_target,
         epsilon_cal=epsilon_cal,
         aggregate="mean",
-        mask_formally_infeasible=True,
+        mask_formally_infeasible=False,
     )
 
     plot_contract_heatmap(

@@ -101,11 +101,8 @@ def predict_proba(model: nn.Module, loader: DataLoader, device: str, temperature
 
 
 @torch.no_grad()
-def evaluate_coverage_aps(model: nn.Module, loader: DataLoader, tau: float, device: str) -> Dict[str, float]:
-    """
-    Evaluate achieved coverage and average APS set size.
-    """
-    probs, labels = predict_proba(model, loader, device)
+def evaluate_coverage_aps(model: nn.Module, loader: DataLoader, tau: float, device: str, temperature: float = 1.0) -> Dict[str, float]:
+    probs, labels = predict_proba(model, loader, device, temperature=temperature)
     N, K = probs.shape
     covered = 0
     total_set_size = 0.0
