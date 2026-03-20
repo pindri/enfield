@@ -1,5 +1,6 @@
 """
-Toy end-to-end demo:
+Initial, toy-ish implementation.
+
 DP training + APS split conformal + formal DP calibration via
 Laplace-noisy cumulative counts on a fixed score grid.
 
@@ -8,25 +9,11 @@ Formal calibration guarantee:
 under exchangeability.
 
 Implemented idea:
-1) Train a NON-private MNIST classifier (tiny MLP), compute a split-conformal threshold, evaluate coverage.
-2) Train a DP classifier (for a target epsilon), compute a split-conformal threshold (non-private), evaluate coverage.
+1) Train a NON-private MNIST classifier (with tiny MLP), compute a split-conformal threshold, evaluate coverage.
+2) Train a DP classifier (for a target eps), compute a split-conformal threshold (non-private), evaluate coverage.
 3) Using the DP-trained model, compute a DP calibration threshold via a DP histogram quantile
    (using Laplace-noised histogram), then evaluate coverage and average prediction set size.
 4) Write a report.json with key metrics.
-
-Run:
-  python toy.py --device cuda
-  python toy.py --dp_train_eps 4 --dp_cal_eps 1.0
-
-Notes:
-- This is a toy feasibility experiment.
-- DP calibration uses a vector Laplace mechanism on cumulative counts over a
-  fixed public score grid.
-- The calibration mechanism is formally eps_cal-DP.
-- For the APS score and APS prediction-set rule implemented in conformal.py,
-  the formal lower bound is
-      P(Y in C_APS(X; tau_hat)) >= 1 - alpha - beta
-  under exchangeability.
 """
 
 import argparse
@@ -54,7 +41,7 @@ def main():
     ap.add_argument("--epochs_dp", type=int, default=3)
     ap.add_argument("--verbose", action="store_true")
 
-    # "Contract-like" knobs.
+    # "Contract-like" made up knobs.
     # ap.add_argument("--coverage", type=float, default=0.90)
     ap.add_argument("--coverage_target", type=float, default=0.90)
     ap.add_argument("--nominal_coverage", type=float, default=0.91)
@@ -66,7 +53,7 @@ def main():
 
 
     # Calibration split.
-    ap.add_argument("--cal_size", type=int, default=10000)  # From MNIST train(60k).
+    ap.add_argument("--cal_size", type=int, default=10000)  # MNIST has 60K data points.
     args = ap.parse_args()
 
     ensure_dir(args.out_dir)
@@ -81,7 +68,7 @@ def main():
     ds_train_full = datasets.MNIST(root=args.data_dir, train=True, download=True, transform=tfm)
     ds_test = datasets.MNIST(root=args.data_dir, train=False, download=True, transform=tfm)
 
-    n_full = len(ds_train_full)  # 60000 for MNIST.
+    n_full = len(ds_train_full)
     cal_size = min(args.cal_size, n_full // 2)
     train_size = n_full - cal_size
     ds_train, ds_cal = random_split(
@@ -90,6 +77,7 @@ def main():
         generator=torch.Generator().manual_seed(args.seed),
     )
 
+    # TODO: Not quite so sure how to best pick num_workers.
     train_loader = DataLoader(ds_train, batch_size=args.batch_size, shuffle=True,
                               num_workers=2, pin_memory=(device == "cuda"))
     cal_loader = DataLoader(ds_cal, batch_size=args.batch_size, shuffle=False,
@@ -217,7 +205,7 @@ def main():
     print(f"[dp+nonprivcal] tau={tau_dp_nonpriv_cal:.4f} coverage={eval_dp_nonpriv_cal['coverage']:.4f} avg_set_size={eval_dp_nonpriv_cal['avg_set_size']:.3f}")
 
     # -----------------------------
-    # 3) DP calibration threshold via DP histogram quantile
+    # 3) DP calibration threshold via DP histogram quantile.
     # -----------------------------
     print("\n[stage] dp calibration (formal noisy cumulative-count quantile)")
     tau_dp_cal, dpcal_info = dp_histogram_quantile_threshold(
@@ -259,10 +247,10 @@ def main():
         "epsilon_total_basic_composition": eps_realized + float(args.dp_cal_eps),
         "delta_total_basic_composition": float(args.dp_delta),
     }
+
     # -----------------------------
     # 4) Contract-style PASS/FAIL checks.
     # -----------------------------
-
     coverage_bound_formal_ok = coverage_lb_formal >= requested_coverage_target
     coverage_ok_empirical = eval_dp_dpcal["coverage"] >= requested_coverage_target
 
@@ -284,7 +272,7 @@ def main():
             and coverage_ok_empirical,
     }
 
-    # Lightweight "hashes" for things to look proper.
+    # Lightweight, made up "hashes" for things to look proper.
     contract_text = json.dumps(report["contract"], sort_keys=True)
     report["hashes"] = {
         "contract_sha256": sha256_of_text(contract_text),

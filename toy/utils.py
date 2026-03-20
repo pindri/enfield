@@ -131,7 +131,7 @@ def accuracy(model, loader, device) -> float:
 
 
 # -----------------------------
-# Reporting.
+# Reporting and feasibility.
 # -----------------------------
 @dataclass
 class Contract:
@@ -142,4 +142,5 @@ class Contract:
     alpha: float
     num_bins: int
 
-
+    def is_feasible(self,) -> bool:
+        return True

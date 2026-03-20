@@ -191,7 +191,7 @@ def plot_contract_heatmap(
     plt.figure(figsize=(7, 5))
     vmin = min(0, np.nanmin(pivot.values))
     vmax = min(1, np.nanmax(pivot.values))
-    norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
+    norm = TwoSlopeNorm(vmin=vmin - 1e-10, vcenter=0.0, vmax=vmax + 1e-10)
     im = plt.imshow(pivot.values, aspect="auto", interpolation="nearest",
                     cmap="RdYlGn", norm=norm,
                     # vmin=-1.0, vmax=1.0, cmap="viridis"
