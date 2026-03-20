@@ -1,6 +1,8 @@
 import math
 
 import torch
+from matplotlib import pyplot as plt
+
 
 # Kinda buggy because scores not aligned with set definitions.
 # def aps_scores(probs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
@@ -32,6 +34,13 @@ def aps_scores(probs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     cum_true = cumsum[torch.arange(probs.size(0)), pos]
     return cum_true.clamp(0.0, 1.0)
 
+def aps_scores_nonAPS(probs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    probs = probs.clamp_min(1e-12)
+    labels = labels.long()
+    true_probs = probs[torch.arange(probs.size(0)), labels]
+    score = 1.0 - true_probs
+    return score.clamp(0.0, 1.0)
+
 
 # Kinda buggy because scores not aligned with set definitions.
 # def aps_prediction_set_mask(probs_row: torch.Tensor, tau: float) -> torch.Tensor:
@@ -48,6 +57,13 @@ def aps_scores(probs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
 #     mask = torch.zeros_like(probs_row, dtype=torch.bool)
 #     mask[selected] = True
 #     return mask
+
+def aps_prediction_set_mask_nonAPS(probs_row: torch.Tensor, tau: float) -> torch.Tensor:
+    probs_row = probs_row.clamp_min(1e-12)
+    mask = probs_row >= (1.0 - tau)
+    if not mask.any():
+        mask[probs_row.argmax()] = True
+    return mask
 
 def aps_prediction_set_mask(probs_row: torch.Tensor, tau: float) -> torch.Tensor:
     probs_row = probs_row.clamp_min(1e-12)
@@ -74,3 +90,27 @@ def split_conformal_threshold(scores: torch.Tensor, alpha: float) -> float:
     # For kth smallest => use torch.kthvalue (1-indexed).
     tau = scores.kthvalue(k).values.item()
     return float(tau)
+
+def summarize_scores(name, scores):
+    s = scores.detach().cpu().float()
+    qs = torch.tensor([0.0, 0.5, 0.9, 0.95, 0.99, 1.0])
+    vals = torch.quantile(s, qs)
+    print(
+        f"[{name}] "
+        f"min={vals[0]:.4f} "
+        f"median={vals[1]:.4f} "
+        f"p90={vals[2]:.4f} "
+        f"p95={vals[3]:.4f} "
+        f"p99={vals[4]:.4f} "
+        f"max={vals[5]:.4f}"
+    )
+def save_score_hist(scores, path, title):
+    s = scores.detach().cpu().numpy()
+    plt.figure(figsize=(6,4))
+    plt.hist(s, bins=50)
+    plt.xlabel("APS score")
+    plt.ylabel("Count")
+    plt.title(title)
+    plt.tight_layout()
+    plt.savefig(path, dpi=200)
+    plt.close()

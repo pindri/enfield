@@ -40,32 +40,17 @@
 #done
 
 
-# Minimal calibration check
-for seed in 0 1 2; do
-  for ceps in 0.1 1.0 4.0; do
-    for nomcov in 0.90 0.94 0.96; do
-      python toy.py \
-        --seed "$seed" \
-        --dp_train_eps 1 \
-        --dp_cal_eps "$ceps" \
-        --cal_size 500 \
-        --nominal_coverage "$nomcov" \
-        --coverage_target 0.93 \
-        --beta 1e-3
-    done
-  done
-done
-
-# Minimal calibration-size check
-for seed in 0 1 2; do
-  for csize in 200 500 2000; do
-    python toy.py \
-      --seed "$seed" \
-      --dp_train_eps 1 \
-      --dp_cal_eps 1.0 \
-      --cal_size "$csize" \
-      --nominal_coverage 0.94 \
-      --coverage_target 0.93 \
-      --beta 1e-3
-  done
-done
+python toy.py \
+  --dataset cifar10 \
+  --seed 0 \
+  --epochs_np 10 \
+  --epochs_dp 10 \
+  --dp_train_eps 1.0 \
+  --dp_cal_eps 1.0 \
+  --cal_size 2000 \
+  --nominal_coverage 0.7 \
+  --coverage_target 0.7 \
+  --beta 1e-3 \
+  --batch_size 128 \
+  --temperature 2.0 \
+  --verbose

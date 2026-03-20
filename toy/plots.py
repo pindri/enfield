@@ -419,17 +419,18 @@ def main() -> None:
 
     # Should have sharp boundaries.
     cal_size = None
-    cal_size = 500
+    # cal_size = 500
     beta = 1e-3
     epsilon_cal = None
-    epsilon_cal = 0.1
+    # epsilon_cal = 0.1
+    epsilon_train_target=None
     plot_contract_feasibility_map(
         df,
         f"{analysis_out_dir}/formal_contract_map_ecal_{epsilon_cal}_calsize_{cal_size}.png",
         value_col="overall_formal_ok",
         beta=beta,
         cal_size=cal_size,
-        epsilon_train_target=1.0,
+        epsilon_train_target=epsilon_train_target,
         epsilon_cal=epsilon_cal,
         aggregate="all",
     )
@@ -440,7 +441,7 @@ def main() -> None:
         value_col="overall_empirical_ok",
         beta=beta,
         cal_size=cal_size,
-        epsilon_train_target=1.0,
+        epsilon_train_target=epsilon_train_target,
         epsilon_cal=epsilon_cal,
         aggregate="mean",
         mask_formally_infeasible=True,
@@ -452,7 +453,7 @@ def main() -> None:
         value_col="empirical_margin_to_target",
         beta=beta,
         cal_size=cal_size,
-        epsilon_train_target=1.0,
+        epsilon_train_target=epsilon_train_target,
         epsilon_cal=epsilon_cal,
         aggregate="mean",
     )

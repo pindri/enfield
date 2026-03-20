@@ -18,6 +18,7 @@ Implemented idea:
 
 import argparse
 import json
+import math
 import time
 from dataclasses import asdict
 
@@ -25,7 +26,7 @@ from opacus import PrivacyEngine
 from torch.utils.data import random_split
 from torchvision import datasets, transforms
 
-from conformal import aps_scores, split_conformal_threshold
+from conformal import aps_scores, split_conformal_threshold, summarize_scores, save_score_hist
 from dp import dp_histogram_quantile_threshold
 from utils import *
 
@@ -40,6 +41,8 @@ def main():
     ap.add_argument("--epochs_np", type=int, default=3)
     ap.add_argument("--epochs_dp", type=int, default=3)
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--dataset", type=str, default="cifar10",
+                choices=["mnist", "fashionmnist", "cifar10"])
 
     # "Contract-like" made up knobs.
     # ap.add_argument("--coverage", type=float, default=0.90)
@@ -50,6 +53,7 @@ def main():
     ap.add_argument("--dp_cal_eps", type=float, default=1.0)
     ap.add_argument("--num_bins", type=int, default=50)
     ap.add_argument("--beta", type=float, default=1e-3)
+    ap.add_argument("--temperature", type=float, default=1.0)
 
 
     # Calibration split.
@@ -64,9 +68,15 @@ def main():
     print(f"[info] device={device}")
 
     # Data.
-    tfm = transforms.Compose([transforms.ToTensor()])
-    ds_train_full = datasets.MNIST(root=args.data_dir, train=True, download=True, transform=tfm)
-    ds_test = datasets.MNIST(root=args.data_dir, train=False, download=True, transform=tfm)
+    if args.dataset in ["mnist", "fashionmnist"]:
+        tfm = transforms.Compose([transforms.ToTensor()])
+        DatasetClass = datasets.MNIST if args.dataset == "mnist" else datasets.FashionMNIST
+    else:
+        tfm = transforms.Compose([transforms.ToTensor()])
+        DatasetClass = datasets.CIFAR10
+
+    ds_train_full = DatasetClass(root=args.data_dir, train=True, download=True, transform=tfm)
+    ds_test = DatasetClass(root=args.data_dir, train=False, download=True, transform=tfm)
 
     n_full = len(ds_train_full)
     cal_size = min(args.cal_size, n_full // 2)
@@ -118,11 +128,19 @@ def main():
         },
     }
 
+
+    if args.dataset == "cifar10":
+        model_np = TinyCNN(in_channels=3, num_classes=10).to(device)
+        model_dp = TinyCNN(in_channels=3, num_classes=10).to(device)
+    else:
+        model_np = TinyMLP().to(device)
+        model_dp = TinyMLP().to(device)
+
     # -----------------------------
     # Non-private baseline.
     # -----------------------------
     print("\n[stage] non-private training")
-    model_np = TinyMLP().to(device)
+    # model_np = TinyMLP().to(device)
     opt_np = torch.optim.SGD(model_np.parameters(), lr=0.2, momentum=0.9)
 
     for ep in range(args.epochs_np):
@@ -131,8 +149,9 @@ def main():
         print(f"[np] epoch={ep+1}/{args.epochs_np} loss={loss:.4f} test_acc={acc:.4f}")
 
     # Non-private conformal threshold.
-    probs_cal_np, y_cal = predict_proba(model_np, cal_loader, device)
+    probs_cal_np, y_cal = predict_proba(model_np, cal_loader, device, temperature=args.temperature)
     scores_cal_np = aps_scores(probs_cal_np, y_cal)
+    summarize_scores("np_scores", scores_cal_np)
     print("score_stats:",
           "min", float(scores_cal_np.min()),
           "median", float(scores_cal_np.median()),
@@ -159,7 +178,7 @@ def main():
     # DP training.
     # -----------------------------
     print("\n[stage] dp training")
-    model_dp = TinyMLP().to(device)
+    # model_dp = TinyMLP().to(device)
     opt_dp = torch.optim.SGD(model_dp.parameters(), lr=0.2, momentum=0.9)
 
     privacy_engine = PrivacyEngine()
@@ -185,8 +204,19 @@ def main():
     noise_multiplier = float(opt_dp.noise_multiplier)
 
     # Conformal on the DP model (non-private threshold first).
-    probs_cal_dp, y_cal2 = predict_proba(model_dp, cal_loader, device)
+    probs_cal_dp, y_cal2 = predict_proba(model_dp, cal_loader, device, temperature=args.temperature)
     scores_cal_dp = aps_scores(probs_cal_dp, y_cal2)
+    summarize_scores("dp_scores", scores_cal_dp)
+    m = scores_cal_dp.numel()
+    k = int(math.ceil((m + 1) * (1 - alpha)))
+    k = min(max(k, 1), m)
+    sorted_scores, _ = torch.sort(scores_cal_dp)
+    print(
+        f"[dp_nonpriv_quantile] k={k}/{m} "
+        f"score_k={sorted_scores[k-1].item():.6f} "
+        f"score_(k-5)={sorted_scores[max(k-6,0)].item():.6f} "
+        f"score_(k+5)={sorted_scores[min(k+4,m-1)].item():.6f}"
+    )
     tau_dp_nonpriv_cal = split_conformal_threshold(scores_cal_dp, alpha)
     eval_dp_nonpriv_cal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_nonpriv_cal, device)
 
@@ -279,6 +309,10 @@ def main():
         "script_sha256": sha256_of_text(open(__file__, "r", encoding="utf-8").read()),
     }
 
+    # Some histogramming because things are weird.
+    save_score_hist(scores_cal_np, f"{args.out_dir}/np_scores_seed_{args.seed}.png", "NP APS scores")
+    save_score_hist(scores_cal_dp, f"{args.out_dir}/dp_scores_seed_{args.seed}.png", "DP APS scores")
+
     outpath = os.path.join(
         args.out_dir,
         f"report_traineps_{args.dp_train_eps}"
@@ -293,11 +327,29 @@ def main():
         json.dump(report, f, indent=2, sort_keys=True)
 
     print(f"\n[done] wrote {outpath}")
-    if args.verbose:
-        print("[next] for a quick sanity sweep, try:")
-        print("  python toy.py --dp_train_eps 8 --dp_cal_eps 2.0")
-        print("  python toy.py --dp_train_eps 4 --dp_cal_eps 1.0")
-        print("  python toy.py --dp_train_eps 2 --dp_cal_eps 0.5")
+
+    # Some APS debugging.
+    sorted_probs, sorted_idx = torch.sort(probs_cal_dp, dim=1, descending=True)
+    matches = (sorted_idx == y_cal2[:, None])
+    pos = matches.float().argmax(dim=1).float()
+
+    print(
+        "[true_label_rank]",
+        "median", pos.median().item(),
+        "p90", torch.quantile(pos, 0.9).item(),
+        "max", pos.max().item(),
+    )
+
+    true_probs = probs_cal_dp[torch.arange(probs_cal_dp.size(0)), y_cal2]
+    top1_probs = probs_cal_dp.max(dim=1).values
+
+    print(
+        "[prob_stats]",
+        "true_prob_median", true_probs.median().item(),
+        "true_prob_p10", torch.quantile(true_probs, 0.1).item(),
+        "top1_prob_median", top1_probs.median().item(),
+        "top1_prob_p90", torch.quantile(top1_probs, 0.9).item(),
+    )
 
 
 if __name__ == "__main__":

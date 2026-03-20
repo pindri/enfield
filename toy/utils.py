@@ -44,16 +44,48 @@ class TinyMLP(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
+class TinyCNN(nn.Module):
+    def __init__(self, in_channels=3, num_classes=10):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Flatten(),
+            nn.Linear(64 * 8 * 8, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_classes),
+        )
 
+    def forward(self, x):
+        return self.net(x)
+
+# @torch.no_grad()
+# def predict_proba(model: nn.Module, loader: DataLoader, device: str) -> Tuple[torch.Tensor, torch.Tensor]:
+#     """
+#     Helper to predict probabilities and labels.
+#
+#     Returns:
+#       probs: (N, K)
+#       labels: (N,)
+#     """
+#     model.eval()
+#     probs_list = []
+#     labels_list = []
+#     for x, y in loader:
+#         x = x.to(device)
+#         y = y.to(device)
+#         logits = model(x)
+#         probs = F.softmax(logits, dim=1)
+#         probs_list.append(probs.cpu())
+#         labels_list.append(y.cpu())
+#     return torch.cat(probs_list, dim=0), torch.cat(labels_list, dim=0)
+#
 @torch.no_grad()
-def predict_proba(model: nn.Module, loader: DataLoader, device: str) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Helper to predict probabilities and labels.
-
-    Returns:
-      probs: (N, K)
-      labels: (N,)
-    """
+def predict_proba(model: nn.Module, loader: DataLoader, device: str, temperature: float = 1.0):
     model.eval()
     probs_list = []
     labels_list = []
@@ -61,7 +93,7 @@ def predict_proba(model: nn.Module, loader: DataLoader, device: str) -> Tuple[to
         x = x.to(device)
         y = y.to(device)
         logits = model(x)
-        probs = F.softmax(logits, dim=1)
+        probs = F.softmax(logits / temperature, dim=1)
         probs_list.append(probs.cpu())
         labels_list.append(y.cpu())
     return torch.cat(probs_list, dim=0), torch.cat(labels_list, dim=0)
@@ -107,7 +139,8 @@ def train_epoch(model, loader, optimizer, device) -> float:
         y = y.to(device)
         optimizer.zero_grad(set_to_none=True)
         logits = model(x)
-        loss = F.cross_entropy(logits, y)
+        # loss = F.cross_entropy(logits, y)
+        loss = F.cross_entropy(logits, y, label_smoothing=0.1)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * x.size(0)
