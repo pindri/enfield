@@ -37,7 +37,7 @@ def main():
     ap.add_argument("--num_bins", type=int, default=50)
     ap.add_argument("--beta", type=float, default=1e-3)
     ap.add_argument("--temperature", type=float, default=1.0)
-    ap.add_argument("--label_smoothing", type=float, default=0.1)
+    ap.add_argument("--label_smoothing", type=float, default=0.0)
 
 
     # Calibration split.
@@ -123,6 +123,7 @@ def main():
             "nominal_coverage": nominal_coverage,
             "coverage_target": coverage_target,
             "beta": float(args.beta),
+            "label_smoothing": float(args.label_smoothing),
         },
     }
 
@@ -265,7 +266,7 @@ def main():
     num_classes = probs_cal_dp.shape[1]
     warning_threshold = 0.7
     if eval_dp_dpcal["avg_set_size"] > warning_threshold * num_classes:
-        print(f"[warn] avg_set_size is large ({warning_threshold*100}% of the number of classes); "
+        print(f"[warn] avg_set_size is large ({eval_dp_dpcal['avg_set_size']*100}% of the number of classes); "
               f"DP calibration may be too noisy or model too weak; "
               "Try larger dp_eps_cal or larger cal_size.")
 
@@ -313,6 +314,7 @@ def main():
         f"_nomcov_{args.nominal_coverage}"
         f"_target_{args.coverage_target}"
         f"_beta_{args.beta}"
+        f"_lsmooth_{args.label_smoothing}"
         f"_seed_{args.seed}.json"
     )
     with open(out_path, "w", encoding="utf-8") as f:
@@ -328,9 +330,9 @@ def main():
 
         print(
             "[true_label_rank]",
-            "median", pos.median().item(),
-            "p90", torch.quantile(pos, 0.9).item(),
-            "max", pos.max().item(),
+            "median", f"{pos.median().item():.4f}",
+            "p90", f"{torch.quantile(pos, 0.9).item():.4f}",
+            "max", f"{pos.max().item():.4f}",
         )
 
         true_probs = probs_cal_dp[torch.arange(probs_cal_dp.size(0)), y_cal_dp]
@@ -338,10 +340,10 @@ def main():
 
         print(
             "[prob_stats]",
-            "true_prob_median", true_probs.median().item(),
-            "true_prob_p10", torch.quantile(true_probs, 0.1).item(),
-            "top1_prob_median", top1_probs.median().item(),
-            "top1_prob_p90", torch.quantile(top1_probs, 0.9).item(),
+            "true_prob_median", f"{true_probs.median().item():.4f}",
+            "true_prob_p10", f"{torch.quantile(true_probs, 0.1).item():.4f}",
+            "top1_prob_median", f"{top1_probs.median().item():.4f}",
+            "top1_prob_p90", f"{torch.quantile(top1_probs, 0.9).item():.4f}",
         )
 
 

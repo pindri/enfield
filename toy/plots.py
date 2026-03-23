@@ -57,6 +57,7 @@ def load_reports(report_dir: str | Path) -> pd.DataFrame:
             "seed": r["meta"]["seed"],
             "device": r["meta"]["device"],
             "nominal_coverage": r["meta"]["nominal_coverage"],
+            "label_smoothing": r["meta"]["label_smoothing"],
 
             # Non-private baseline.
             "np_accuracy": r["non_private"]["test_accuracy"],
@@ -99,6 +100,9 @@ def load_reports(report_dir: str | Path) -> pd.DataFrame:
         )
         row["empirical_margin_to_target"] = (
             row["test_coverage_dp_cal"] - row["coverage_target"]
+        )
+        row["empirical_margin_to_nominal"] = (
+            row["test_coverage_dp_cal"] - row["nominal_coverage"]
         )
 
         rows.append(row)
@@ -213,6 +217,99 @@ def plot_contract_heatmap(
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+
+def plot_heatmap_choose(
+    df: pd.DataFrame,
+    outpath: str | Path,
+    value_col: str,
+    y_col: str,
+    x_col: str,
+    beta: float | None = None,
+    cal_size: int | None = None,
+    epsilon_train_target: float | None = None,
+    epsilon_cal: float | None = None,
+    aggregate: str = "mean",
+    title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+) -> None:
+    dff = df.copy()
+
+    if beta is not None:
+        dff = dff[np.isclose(dff["beta"], beta)]
+    if cal_size is not None:
+        dff = dff[dff["cal_size"] == cal_size]
+    if epsilon_train_target is not None:
+        dff = dff[np.isclose(dff["epsilon_train_target"], epsilon_train_target)]
+    if epsilon_cal is not None:
+        dff = dff[np.isclose(dff["epsilon_cal"], epsilon_cal)]
+
+    if dff.empty:
+        raise ValueError("No rows remain after filtering")
+
+    grouped = dff.groupby([y_col, x_col], as_index=False)[value_col]
+
+    if aggregate == "mean":
+        agg = grouped.mean()
+    elif aggregate == "median":
+        agg = grouped.median()
+    else:
+        raise ValueError("aggregate must be 'mean' or 'median'")
+
+    pivot = agg.pivot(
+        index=y_col,
+        columns=x_col,
+        values=value_col,
+    ).sort_index().sort_index(axis=1)
+
+    plot_data = pivot.to_numpy(dtype=float)
+
+    plt.figure(figsize=(7, 5))
+
+    finite_vals = plot_data[np.isfinite(plot_data)]
+    if finite_vals.size == 0:
+        raise ValueError("No finite values to plot")
+
+    vmin = min(0.0, float(np.nanmin(finite_vals)))
+    vmax = max(0.0, float(np.nanmax(finite_vals)))
+
+    if np.isclose(vmin, vmax):
+        im = plt.imshow(
+            plot_data,
+            aspect="auto",
+            interpolation="nearest",
+            cmap="RdYlGn",
+            vmin=vmin - 1e-8,
+            vmax=vmax + 1e-8,
+        )
+    else:
+        norm = TwoSlopeNorm(vmin=vmin - 1e-10, vcenter=0.0, vmax=vmax + 1e-10)
+        im = plt.imshow(
+            plot_data,
+            aspect="auto",
+            interpolation="nearest",
+            cmap="RdYlGn",
+            norm=norm,
+        )
+
+    plt.xticks(range(len(pivot.columns)), [str(x) for x in pivot.columns])
+    plt.yticks(range(len(pivot.index)), [str(y) for y in pivot.index])
+
+    plt.xlabel(xlabel if xlabel is not None else x_col)
+    plt.ylabel(ylabel if ylabel is not None else y_col)
+    plt.title(title if title is not None else value_col)
+
+    for i in range(pivot.shape[0]):
+        for j in range(pivot.shape[1]):
+            val = pivot.iloc[i, j]
+            txt = "NA" if pd.isna(val) else f"{float(val):.3f}"
+            plt.text(j, i, txt, ha="center", va="center")
+
+    plt.colorbar(im)
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+
 def plot_coverage_vs_epsilon_cal(
     df: pd.DataFrame,
     outpath: str | Path,
@@ -305,19 +402,41 @@ def plot_set_size_vs_epsilon_cal_by_nominal(
     plt.close()
 
 
-def plot_coverage_vs_epsilon_cal_by_nominal(
+def plot_coverage_vs_epsilon_by_nominal(
     df: pd.DataFrame,
     outpath: str | Path,
     fixed_cal_size: int | None = None,
     fixed_epsilon_train_target: float | None = None,
     fixed_coverage_target: float | None = None,
+    fixed_nominal_coverage: float | None = None,
     aggregate: str = "mean",
+    x_axis: str = "epsilon_cal",
 ) -> None:
     """
-    Line plot of empirical coverage vs epsilon_cal, with one curve per nominal coverage.
-    If multiple rows remain per epsilon_cal (e.g. multiple seeds), aggregate them.
+    Line plot of empirical coverage vs selected epsilon axis, with one curve per nominal coverage.
+    If multiple rows remain per x value (e.g. multiple seeds), aggregate them.
+
+    x_axis can be one of: 'epsilon_cal', 'epsilon_train_target', 'epsilon_train_realized'.
     """
     dff = df.copy()
+
+    axis_meta = {
+        "epsilon_cal": (
+            r"$\epsilon_{\mathrm{cal}}$",
+            "Coverage vs calibration privacy",
+        ),
+        "epsilon_train_target": (
+            r"Target $\epsilon_{\mathrm{train}}$",
+            "Coverage vs target training privacy",
+        ),
+        "epsilon_train_realized": (
+            r"Realized $\epsilon_{\mathrm{train}}$",
+            "Coverage vs realized training privacy",
+        ),
+    }
+    if x_axis not in axis_meta:
+        valid = ", ".join(axis_meta.keys())
+        raise ValueError(f"x_axis must be one of: {valid}")
 
     if fixed_cal_size is not None:
         dff = dff[dff["cal_size"] == fixed_cal_size].copy()
@@ -328,6 +447,9 @@ def plot_coverage_vs_epsilon_cal_by_nominal(
     if fixed_coverage_target is not None:
         dff = dff[np.isclose(dff["coverage_target"], fixed_coverage_target)].copy()
 
+    if fixed_nominal_coverage is not None:
+        dff = dff[np.isclose(dff["nominal_coverage"], fixed_nominal_coverage)].copy()
+
     if dff.empty:
         raise ValueError("No rows remain after filtering for plot_coverage_vs_epsilon_cal_by_nominal")
 
@@ -336,7 +458,7 @@ def plot_coverage_vs_epsilon_cal_by_nominal(
     for nomcov in sorted(dff["nominal_coverage"].unique()):
         g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
 
-        grouped = g.groupby("epsilon_cal", as_index=False)["test_coverage_dp_cal"]
+        grouped = g.groupby(x_axis, as_index=False)["test_coverage_dp_cal"]
         if aggregate == "mean":
             gplot = grouped.mean()
         elif aggregate == "median":
@@ -344,18 +466,19 @@ def plot_coverage_vs_epsilon_cal_by_nominal(
         else:
             raise ValueError("aggregate must be 'mean' or 'median'")
 
-        gplot = gplot.sort_values("epsilon_cal")
+        gplot = gplot.sort_values(x_axis)
 
         plt.plot(
-            gplot["epsilon_cal"],
+            gplot[x_axis],
             gplot["test_coverage_dp_cal"],
             marker="o",
             label=f"nom={nomcov}",
         )
 
-    plt.xlabel(r"$\epsilon_{\mathrm{cal}}$")
+    xlabel, title = axis_meta[x_axis]
+    plt.xlabel(xlabel)
     plt.ylabel("Empirical coverage")
-    plt.title("Coverage vs calibration privacy")
+    plt.title(title)
     plt.legend(title="Nominal coverage")
     plt.tight_layout()
     plt.savefig(outpath, dpi=200)
@@ -480,9 +603,11 @@ def plot_contract_feasibility_map(
         values=value_col,
     ).sort_index().sort_index(axis=1)
 
+    pivot = pivot.astype(float)
+
     plt.figure(figsize=(7, 5))
     plt.imshow(pivot.values, aspect="auto", interpolation="nearest",
-               vmin=-1.0, vmax=1.0, cmap="viridis"
+               vmin=0, vmax=1.0, cmap="viridis"
                )
 
     plt.xticks(range(len(pivot.columns)), [str(x) for x in pivot.columns])
@@ -513,8 +638,10 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_dir", type=str, default="data")
-    ap.add_argument("--analysis_out_dir", type=str, default="analysis")
-    ap.add_argument("--out_dir", type=str, default="toy_out")
+    # ap.add_argument("--analysis_out_dir", type=str, default="analysis")
+    ap.add_argument("--analysis_out_dir", type=str, default="analysis_smoothckeck")
+    # ap.add_argument("--out_dir", type=str, default="toy_out")
+    ap.add_argument("--out_dir", type=str, default="toy_out_smoothcheck")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
@@ -551,19 +678,6 @@ def main() -> None:
             ]
         ].sort_values(["epsilon_train_target", "epsilon_cal"]).to_string(index=False))
 
-    dff = filter_df(
-        df,
-        # nominal_coverage=0.90,
-        # coverage_target=0.89,
-        # beta=1e-3,
-        # cal_size=500,
-    )
-
-    # Plot figures.
-    # plot_coverage_vs_formal_bound(dff, f"{analysis_out_dir}/coverage_vs_formal_bound.png")
-    # plot_set_size_vs_epsilon_cal(dff, f"{analysis_out_dir}/set_size_vs_epsilon_cal.png")
-    # plot_coverage_vs_epsilon_cal(dff, f"{analysis_out_dir}/coverage_vs_epsilon_cal.png")
-    # plot_accuracy_vs_epsilon_train(dff, f"{analysis_out_dir}/accuracy_vs_epsilon_train.png")
 
     # Other versions gosh what a mess.
     plot_set_size_vs_epsilon_cal_by_nominal(
@@ -571,15 +685,25 @@ def main() -> None:
         f"{analysis_out_dir}/set_size_vs_epsilon_cal_by_nominal.png",
         fixed_cal_size=2000,
         fixed_epsilon_train_target=4.0,
-        fixed_coverage_target=0.8,
+        # fixed_coverage_target=0.8,
     )
 
-    plot_coverage_vs_epsilon_cal_by_nominal(
+    plot_coverage_vs_epsilon_by_nominal(
         df,
         f"{analysis_out_dir}/coverage_vs_epsilon_cal_by_nominal.png",
         fixed_cal_size=2000,
         fixed_epsilon_train_target=4.0,
-        # fixed_coverage_target=0.7,
+        x_axis="epsilon_cal",
+        # fixed_nominal_coverage=0.8,
+    )
+
+    plot_coverage_vs_epsilon_by_nominal(
+        df,
+        f"{analysis_out_dir}/coverage_vs_epsilon_train_by_nominal.png",
+        fixed_cal_size=2000,
+        # fixed_epsilon_train_target=4.0,
+        x_axis="epsilon_train_target",
+        # fixed_nominal_coverage=0.8,
     )
 
     # Should have sharp boundaries.
@@ -612,17 +736,48 @@ def main() -> None:
         mask_formally_infeasible=False,
     )
 
-    plot_contract_heatmap(
+    # plot_contract_heatmap(
+    #     df,
+    #     f"{analysis_out_dir}/empirical_margin_to_target_map_ecal_{epsilon_cal}_calsize_{cal_size}.png",
+    #     value_col="empirical_margin_to_target",
+    #     beta=beta,
+    #     cal_size=cal_size,
+    #     epsilon_train_target=epsilon_train_target,
+    #     epsilon_cal=epsilon_cal,
+    #     aggregate="mean",
+    # )
+    #
+
+    plot_heatmap_choose(
         df,
-        f"{analysis_out_dir}/empirical_margin_to_target_map_ecal_{epsilon_cal}_calsize_{cal_size}.png",
+        outpath=f"{analysis_out_dir}/heatmap_empirical_margin_to_target.png",
         value_col="empirical_margin_to_target",
-        beta=beta,
-        cal_size=cal_size,
-        epsilon_train_target=epsilon_train_target,
-        epsilon_cal=epsilon_cal,
+        y_col="nominal_coverage",
+        x_col="coverage_target",
+        beta=1e-3,
+        cal_size=2000,
+        epsilon_train_target=4.0,
+        epsilon_cal=4.0,
         aggregate="mean",
+        xlabel="Coverage target",
+        ylabel="Nominal coverage",
+        title="Empirical margin to target",
     )
 
+    plot_heatmap_choose(
+        df,
+        outpath=f"{analysis_out_dir}/heatmap_empirical_minus_nominal.png",
+        value_col="empirical_margin_to_nominal",
+        y_col="nominal_coverage",
+        x_col="epsilon_cal",
+        beta=1e-3,
+        cal_size=2000,
+        epsilon_train_target=4.0,
+        aggregate="mean",
+        xlabel=r"$\epsilon_{\mathrm{cal}}$",
+        ylabel="Nominal coverage",
+        title="Empirical coverage - nominal coverage",
+    )
     print(f"Saved outputs to {analysis_out_dir}")
 
 
