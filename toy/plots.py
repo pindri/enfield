@@ -215,6 +215,154 @@ def plot_contract_heatmap(
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+def plot_coverage_vs_epsilon_cal(
+    df: pd.DataFrame,
+    outpath: str | Path,
+    fixed_cal_size: int | None = None,
+) -> None:
+    """
+    Line plot of avg coverage vs epsilon_cal, with one curve per train epsilon target.
+    """
+    dff = df.copy()
+    if fixed_cal_size is not None:
+        dff = dff[dff["cal_size"] == fixed_cal_size].copy()
+
+    if dff.empty:
+        raise ValueError("No rows remain after filtering for plot_set_size_vs_epsilon_cal")
+
+    plt.figure(figsize=(7, 5))
+
+    for eps_train in sorted(dff["epsilon_train_target"].unique()):
+        g = dff[dff["epsilon_train_target"] == eps_train].sort_values("epsilon_cal")
+        plt.plot(
+            g["epsilon_cal"],
+            g["dp_coverage_dpcal"],
+            marker="o",
+            label=f"train eps={eps_train}",
+        )
+
+    plt.xlabel(r"$\epsilon_{\mathrm{cal}}$")
+    plt.ylabel("Average prediction set size")
+    plt.title("Set size vs calibration privacy")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+
+
+def plot_set_size_vs_epsilon_cal_by_nominal(
+    df: pd.DataFrame,
+    outpath: str | Path,
+    fixed_cal_size: int | None = None,
+    fixed_epsilon_train_target: float | None = None,
+    fixed_coverage_target: float | None = None,
+    aggregate: str = "mean",
+) -> None:
+    """
+    Line plot of avg set size vs epsilon_cal, with one curve per nominal coverage.
+    If multiple rows remain per epsilon_cal (e.g. multiple seeds), aggregate them.
+    """
+    dff = df.copy()
+
+    if fixed_cal_size is not None:
+        dff = dff[dff["cal_size"] == fixed_cal_size].copy()
+
+    if fixed_epsilon_train_target is not None:
+        dff = dff[np.isclose(dff["epsilon_train_target"], fixed_epsilon_train_target)].copy()
+
+    if fixed_coverage_target is not None:
+        dff = dff[np.isclose(dff["coverage_target"], fixed_coverage_target)].copy()
+
+    if dff.empty:
+        raise ValueError("No rows remain after filtering for plot_set_size_vs_epsilon_cal_by_nominal")
+
+    plt.figure(figsize=(7, 5))
+
+    for nomcov in sorted(dff["nominal_coverage"].unique()):
+        g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
+
+        grouped = g.groupby("epsilon_cal", as_index=False)["dp_avg_set_size_dpcal"]
+        if aggregate == "mean":
+            gplot = grouped.mean()
+        elif aggregate == "median":
+            gplot = grouped.median()
+        else:
+            raise ValueError("aggregate must be 'mean' or 'median'")
+
+        gplot = gplot.sort_values("epsilon_cal")
+
+        plt.plot(
+            gplot["epsilon_cal"],
+            gplot["dp_avg_set_size_dpcal"],
+            marker="o",
+            label=f"nom={nomcov}",
+        )
+
+    plt.xlabel(r"$\epsilon_{\mathrm{cal}}$")
+    plt.ylabel("Average prediction set size")
+    plt.title("Set size vs calibration privacy")
+    plt.legend(title="Nominal coverage")
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+
+
+def plot_coverage_vs_epsilon_cal_by_nominal(
+    df: pd.DataFrame,
+    outpath: str | Path,
+    fixed_cal_size: int | None = None,
+    fixed_epsilon_train_target: float | None = None,
+    fixed_coverage_target: float | None = None,
+    aggregate: str = "mean",
+) -> None:
+    """
+    Line plot of empirical coverage vs epsilon_cal, with one curve per nominal coverage.
+    If multiple rows remain per epsilon_cal (e.g. multiple seeds), aggregate them.
+    """
+    dff = df.copy()
+
+    if fixed_cal_size is not None:
+        dff = dff[dff["cal_size"] == fixed_cal_size].copy()
+
+    if fixed_epsilon_train_target is not None:
+        dff = dff[np.isclose(dff["epsilon_train_target"], fixed_epsilon_train_target)].copy()
+
+    if fixed_coverage_target is not None:
+        dff = dff[np.isclose(dff["coverage_target"], fixed_coverage_target)].copy()
+
+    if dff.empty:
+        raise ValueError("No rows remain after filtering for plot_coverage_vs_epsilon_cal_by_nominal")
+
+    plt.figure(figsize=(7, 5))
+
+    for nomcov in sorted(dff["nominal_coverage"].unique()):
+        g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
+
+        grouped = g.groupby("epsilon_cal", as_index=False)["dp_coverage_dpcal"]
+        if aggregate == "mean":
+            gplot = grouped.mean()
+        elif aggregate == "median":
+            gplot = grouped.median()
+        else:
+            raise ValueError("aggregate must be 'mean' or 'median'")
+
+        gplot = gplot.sort_values("epsilon_cal")
+
+        plt.plot(
+            gplot["epsilon_cal"],
+            gplot["dp_coverage_dpcal"],
+            marker="o",
+            label=f"nom={nomcov}",
+        )
+
+    plt.xlabel(r"$\epsilon_{\mathrm{cal}}$")
+    plt.ylabel("Empirical coverage")
+    plt.title("Coverage vs calibration privacy")
+    plt.legend(title="Nominal coverage")
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+
 def plot_set_size_vs_epsilon_cal(
     df: pd.DataFrame,
     outpath: str | Path,
@@ -396,6 +544,7 @@ def main() -> None:
                 "epsilon_train_realized",
                 "epsilon_cal",
                 "coverage_target",
+                "nominal_coverage",
                 "coverage_lower_bound_formal",
                 "dp_coverage_dpcal",
                 "dp_avg_set_size_dpcal",
@@ -406,16 +555,34 @@ def main() -> None:
 
     dff = filter_df(
         df,
-        nominal_coverage=0.90,
-        coverage_target=0.89,
-        beta=1e-3,
-        cal_size=500,
+        # nominal_coverage=0.90,
+        # coverage_target=0.89,
+        # beta=1e-3,
+        # cal_size=500,
     )
 
     # Plot figures.
     # plot_coverage_vs_formal_bound(dff, f"{analysis_out_dir}/coverage_vs_formal_bound.png")
     # plot_set_size_vs_epsilon_cal(dff, f"{analysis_out_dir}/set_size_vs_epsilon_cal.png")
+    # plot_coverage_vs_epsilon_cal(dff, f"{analysis_out_dir}/coverage_vs_epsilon_cal.png")
     # plot_accuracy_vs_epsilon_train(dff, f"{analysis_out_dir}/accuracy_vs_epsilon_train.png")
+
+    # Other versions gosh what a mess.
+    plot_set_size_vs_epsilon_cal_by_nominal(
+        df,
+        "analysis/set_size_vs_epsilon_cal_by_nominal.png",
+        fixed_cal_size=2000,
+        fixed_epsilon_train_target=4.0,
+        fixed_coverage_target=0.8,
+    )
+
+    plot_coverage_vs_epsilon_cal_by_nominal(
+        df,
+        "analysis/coverage_vs_epsilon_cal_by_nominal.png",
+        fixed_cal_size=2000,
+        fixed_epsilon_train_target=4.0,
+        # fixed_coverage_target=0.7,
+    )
 
     # Should have sharp boundaries.
     cal_size = None
