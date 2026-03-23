@@ -28,6 +28,7 @@ def filter_df(
         dff = dff[dff["cal_size"] == cal_size]
     return dff
 
+
 def load_reports(report_dir: str | Path) -> pd.DataFrame:
     """
     Load all report_*.json files and flatten the main fields used for plotting.
@@ -55,6 +56,7 @@ def load_reports(report_dir: str | Path) -> pd.DataFrame:
             "train_size": r["meta"]["train_size"],
             "seed": r["meta"]["seed"],
             "device": r["meta"]["device"],
+            "nominal_coverage": r["meta"]["nominal_coverage"],
 
             # Non-private baseline.
             "np_accuracy": r["non_private"]["test_accuracy"],
@@ -67,40 +69,36 @@ def load_reports(report_dir: str | Path) -> pd.DataFrame:
             "epsilon_train_realized": r["dp_training"]["epsilon_realized"],
             "noise_multiplier": r["dp_training"]["noise_multiplier"],
             "tau_nonprivate_cal": r["dp_training"]["tau_nonprivate_cal"],
-            "dp_coverage_nonprivate_cal": r["dp_training"]["test_coverage_nonprivate_cal"],
+            "test_coverage_nonprivate_cal": r["dp_training"]["test_coverage_nonprivate_cal"],
             "dp_avg_set_size_nonprivate_cal": r["dp_training"]["avg_set_size_nonprivate_cal"],
+
+            # DP composition.
+            "epsilon_total_basic_composition": r["privacy_composition"]["epsilon_total_basic_composition"],
 
             # DP calibration.
             "beta": r["dp_calibration"]["beta"],
             "coverage_lower_bound_formal": r["dp_calibration"]["coverage_lower_bound_formal"],
             "tau_dp_cal": r["dp_calibration"]["tau_dp_cal"],
-            "dp_coverage_dpcal": r["dp_calibration"]["test_coverage_dp_cal"],
-            "dp_avg_set_size_dpcal": r["dp_calibration"]["avg_set_size_dp_cal"],
+            "test_coverage_dp_cal": r["dp_calibration"]["test_coverage_dp_cal"],
+            "avg_set_size_dp_cal": r["dp_calibration"]["avg_set_size_dp_cal"],
             "lambda": r["dp_calibration"]["lambda"],
             "noise_scale": r["dp_calibration"]["noise_scale"],
             "k": r["dp_calibration"]["k"],
-            "nominal_coverage": r["dp_calibration"]["nominal_coverage"],
-            "requested_coverage_target": r["dp_calibration"]["requested_coverage_target"],
-            "overall_empirical_ok": r["pass_fail"]["overall_empirical_ok"],
 
             # Pass/Fail.
-            "overall_formal_ok": r["pass_fail"]["overall_formal_ok"],
-            "coverage_ok_empirical": r["pass_fail"]["coverage_ok_empirical"],
+            "coverage_bound_formal_ok": r["pass_fail"]["coverage_bound_formal_ok"],
             "privacy_training_ok": r["pass_fail"]["privacy_training_ok"],
+            "coverage_empirical_ok": r["pass_fail"]["coverage_empirical_ok"],
+            "overall_formal_ok": r["pass_fail"]["overall_formal_ok"],
+            "overall_empirical_ok": r["pass_fail"]["overall_empirical_ok"],
         }
 
         # Useful derived fields.
-        row["epsilon_total_basic"] = (
-            row["epsilon_train_realized"] + row["epsilon_cal"]
-        )
-        row["emp_minus_bound"] = (
-            row["dp_coverage_dpcal"] - row["coverage_lower_bound_formal"]
-        )
-        row["overall_empirical_contract_ok"] = (
-            row["coverage_ok_empirical"] & row["privacy_training_ok"]
+        row["empirical_margin_to_bound"] = (
+            row["test_coverage_dp_cal"] - row["coverage_lower_bound_formal"]
         )
         row["empirical_margin_to_target"] = (
-            row["dp_coverage_dpcal"] - row["coverage_target"]
+            row["test_coverage_dp_cal"] - row["coverage_target"]
         )
 
         rows.append(row)
@@ -125,11 +123,11 @@ def plot_coverage_vs_formal_bound(df: pd.DataFrame, outpath: str | Path) -> None
     plt.figure(figsize=(6, 5))
     plt.scatter(
         df["coverage_lower_bound_formal"],
-        df["dp_coverage_dpcal"],
+        df["test_coverage_dp_cal"],
     )
 
-    lo = min(df["coverage_lower_bound_formal"].min(), df["dp_coverage_dpcal"].min())
-    hi = max(df["coverage_lower_bound_formal"].max(), df["dp_coverage_dpcal"].max())
+    lo = min(df["coverage_lower_bound_formal"].min(), df["test_coverage_dp_cal"].min())
+    hi = max(df["coverage_lower_bound_formal"].max(), df["test_coverage_dp_cal"].max())
     margin = 0.01
     lo = max(0.0, lo - margin)
     hi = min(1.0, hi + margin)
@@ -236,14 +234,14 @@ def plot_coverage_vs_epsilon_cal(
         g = dff[dff["epsilon_train_target"] == eps_train].sort_values("epsilon_cal")
         plt.plot(
             g["epsilon_cal"],
-            g["dp_coverage_dpcal"],
+            g["test_coverage_dp_cal"],
             marker="o",
             label=f"train eps={eps_train}",
         )
 
     plt.xlabel(r"$\epsilon_{\mathrm{cal}}$")
-    plt.ylabel("Average prediction set size")
-    plt.title("Set size vs calibration privacy")
+    plt.ylabel("Empirical coverage")
+    plt.title("Coverage vs calibration privacy")
     plt.legend()
     plt.tight_layout()
     plt.savefig(outpath, dpi=200)
@@ -281,7 +279,7 @@ def plot_set_size_vs_epsilon_cal_by_nominal(
     for nomcov in sorted(dff["nominal_coverage"].unique()):
         g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
 
-        grouped = g.groupby("epsilon_cal", as_index=False)["dp_avg_set_size_dpcal"]
+        grouped = g.groupby("epsilon_cal", as_index=False)["avg_set_size_dp_cal"]
         if aggregate == "mean":
             gplot = grouped.mean()
         elif aggregate == "median":
@@ -293,7 +291,7 @@ def plot_set_size_vs_epsilon_cal_by_nominal(
 
         plt.plot(
             gplot["epsilon_cal"],
-            gplot["dp_avg_set_size_dpcal"],
+            gplot["avg_set_size_dp_cal"],
             marker="o",
             label=f"nom={nomcov}",
         )
@@ -338,7 +336,7 @@ def plot_coverage_vs_epsilon_cal_by_nominal(
     for nomcov in sorted(dff["nominal_coverage"].unique()):
         g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
 
-        grouped = g.groupby("epsilon_cal", as_index=False)["dp_coverage_dpcal"]
+        grouped = g.groupby("epsilon_cal", as_index=False)["test_coverage_dp_cal"]
         if aggregate == "mean":
             gplot = grouped.mean()
         elif aggregate == "median":
@@ -350,7 +348,7 @@ def plot_coverage_vs_epsilon_cal_by_nominal(
 
         plt.plot(
             gplot["epsilon_cal"],
-            gplot["dp_coverage_dpcal"],
+            gplot["test_coverage_dp_cal"],
             marker="o",
             label=f"nom={nomcov}",
         )
@@ -384,7 +382,7 @@ def plot_set_size_vs_epsilon_cal(
         g = dff[dff["epsilon_train_target"] == eps_train].sort_values("epsilon_cal")
         plt.plot(
             g["epsilon_cal"],
-            g["dp_avg_set_size_dpcal"],
+            g["avg_set_size_dp_cal"],
             marker="o",
             label=f"train eps={eps_train}",
         )
@@ -546,8 +544,8 @@ def main() -> None:
                 "coverage_target",
                 "nominal_coverage",
                 "coverage_lower_bound_formal",
-                "dp_coverage_dpcal",
-                "dp_avg_set_size_dpcal",
+                "test_coverage_dp_cal",
+                "avg_set_size_dp_cal",
                 "dp_accuracy",
                 "overall_formal_ok",
             ]
@@ -570,7 +568,7 @@ def main() -> None:
     # Other versions gosh what a mess.
     plot_set_size_vs_epsilon_cal_by_nominal(
         df,
-        "analysis/set_size_vs_epsilon_cal_by_nominal.png",
+        f"{analysis_out_dir}/set_size_vs_epsilon_cal_by_nominal.png",
         fixed_cal_size=2000,
         fixed_epsilon_train_target=4.0,
         fixed_coverage_target=0.8,
@@ -578,7 +576,7 @@ def main() -> None:
 
     plot_coverage_vs_epsilon_cal_by_nominal(
         df,
-        "analysis/coverage_vs_epsilon_cal_by_nominal.png",
+        f"{analysis_out_dir}/coverage_vs_epsilon_cal_by_nominal.png",
         fixed_cal_size=2000,
         fixed_epsilon_train_target=4.0,
         # fixed_coverage_target=0.7,

@@ -6,6 +6,7 @@ import torch
 # -----------------------------
 # DP calibration via histogram quantile.
 # -----------------------------
+
 def dp_histogram_quantile_threshold(
     scores: torch.Tensor,
     alpha: float,
@@ -19,7 +20,7 @@ def dp_histogram_quantile_threshold(
     Differentially private conformal threshold via noisy cumulative counts
     on a fixed public grid.
 
-    Mechanism:
+    Idea:
     - Scores are assumed to lie in [0, 1].
     - Define a public grid t_b = b / B for b = 1, ..., B.
     - For each grid point, compute the cumulative count
@@ -45,8 +46,6 @@ def dp_histogram_quantile_threshold(
     - This mechanism is (intentionally, because I can't do better now) conservative.
     - Larger num_bins or smaller eps_cal increase the safety margin and
       therefore can increase prediction set size.
-    - This version is designed so that the code matches a simple theorem
-      cleanly for toy experiments.
     """
     if not (0.0 < alpha < 1.0):
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")
@@ -79,11 +78,11 @@ def dp_histogram_quantile_threshold(
     noise = _laplace_noise((B,), scale=noise_scale, generator=gen)
     noisy_cdf = counts_cdf + noise
 
-    # Conservative one-sided margin from a union bound over all B bins.
+    # One-sided margin from a union bound over all B bins.
     lam = noise_scale * math.log(float(B) / float(beta))
     target = float(k) + float(lam)
 
-    # Select the first grid point whose noisy cumulative count crosses target.
+    # Select the first grid point whose noisy cumulative count crosses the target.
     crossing = torch.nonzero(noisy_cdf >= target, as_tuple=False)
     if crossing.numel() == 0:
         idx = B - 1  # Fallback to tau = 1.

@@ -1,7 +1,7 @@
 import os
 import random
 from dataclasses import dataclass
-from typing import Tuple, Dict
+from typing import Dict
 
 import torch
 import torch.nn.functional as F
@@ -14,6 +14,7 @@ from conformal import aps_prediction_set_mask
 # -----------------------------
 # Random utils.
 # -----------------------------
+
 def make_reproducible(seed: int) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
@@ -32,6 +33,7 @@ def ensure_dir(path: str) -> None:
 # -----------------------------
 # Models.
 # -----------------------------
+
 class TinyMLP(nn.Module):
     def __init__(self, in_dim=28 * 28, hidden=256, num_classes=10):
         super().__init__()
@@ -43,6 +45,7 @@ class TinyMLP(nn.Module):
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         return self.fc2(x)
+
 
 class TinyCNN(nn.Module):
     def __init__(self, in_channels=3, num_classes=10):
@@ -63,27 +66,11 @@ class TinyCNN(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-# @torch.no_grad()
-# def predict_proba(model: nn.Module, loader: DataLoader, device: str) -> Tuple[torch.Tensor, torch.Tensor]:
-#     """
-#     Helper to predict probabilities and labels.
-#
-#     Returns:
-#       probs: (N, K)
-#       labels: (N,)
-#     """
-#     model.eval()
-#     probs_list = []
-#     labels_list = []
-#     for x, y in loader:
-#         x = x.to(device)
-#         y = y.to(device)
-#         logits = model(x)
-#         probs = F.softmax(logits, dim=1)
-#         probs_list.append(probs.cpu())
-#         labels_list.append(y.cpu())
-#     return torch.cat(probs_list, dim=0), torch.cat(labels_list, dim=0)
-#
+
+# -----------------------------
+# Conformal stuff.
+# -----------------------------
+
 @torch.no_grad()
 def predict_proba(model: nn.Module, loader: DataLoader, device: str, temperature: float = 1.0):
     model.eval()
@@ -97,7 +84,6 @@ def predict_proba(model: nn.Module, loader: DataLoader, device: str, temperature
         probs_list.append(probs.cpu())
         labels_list.append(y.cpu())
     return torch.cat(probs_list, dim=0), torch.cat(labels_list, dim=0)
-
 
 
 @torch.no_grad()
@@ -123,11 +109,11 @@ def evaluate_coverage_aps(model: nn.Module, loader: DataLoader, tau: float, devi
     }
 
 
-
 # -----------------------------
 # Training.
 # -----------------------------
-def train_epoch(model, loader, optimizer, device) -> float:
+
+def train_epoch(model, loader, optimizer, device, label_smoothing=0.0) -> float:
     model.train()
     total_loss = 0.0
     n = 0
@@ -136,8 +122,10 @@ def train_epoch(model, loader, optimizer, device) -> float:
         y = y.to(device)
         optimizer.zero_grad(set_to_none=True)
         logits = model(x)
-        # loss = F.cross_entropy(logits, y)
-        loss = F.cross_entropy(logits, y, label_smoothing=0.1)
+        if label_smoothing > 0.0:
+            loss = F.cross_entropy(logits, y, label_smoothing=0.1)
+        else:
+            loss = F.cross_entropy(logits, y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * x.size(0)
@@ -163,6 +151,7 @@ def accuracy(model, loader, device) -> float:
 # -----------------------------
 # Reporting and feasibility.
 # -----------------------------
+
 @dataclass
 class Contract:
     epsilon_train: float
