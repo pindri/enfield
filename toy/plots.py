@@ -638,10 +638,10 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_dir", type=str, default="data")
-    # ap.add_argument("--analysis_out_dir", type=str, default="analysis")
-    ap.add_argument("--analysis_out_dir", type=str, default="analysis_smoothckeck")
-    # ap.add_argument("--out_dir", type=str, default="toy_out")
-    ap.add_argument("--out_dir", type=str, default="toy_out_smoothcheck")
+    ap.add_argument("--analysis_out_dir", type=str, default="analysis")
+    # ap.add_argument("--analysis_out_dir", type=str, default="analysis_smoothckeck")
+    ap.add_argument("--out_dir", type=str, default="toy_out")
+    # ap.add_argument("--out_dir", type=str, default="toy_out_smoothcheck")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
@@ -735,18 +735,6 @@ def main() -> None:
         aggregate="mean",
         mask_formally_infeasible=False,
     )
-
-    # plot_contract_heatmap(
-    #     df,
-    #     f"{analysis_out_dir}/empirical_margin_to_target_map_ecal_{epsilon_cal}_calsize_{cal_size}.png",
-    #     value_col="empirical_margin_to_target",
-    #     beta=beta,
-    #     cal_size=cal_size,
-    #     epsilon_train_target=epsilon_train_target,
-    #     epsilon_cal=epsilon_cal,
-    #     aggregate="mean",
-    # )
-    #
 
     plot_heatmap_choose(
         df,
