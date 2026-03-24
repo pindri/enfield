@@ -66,6 +66,26 @@ class TinyCNN(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+def inject_label_noise(subset, noise_rate: float, num_classes: int, seed: int):
+    if noise_rate <= 0.0:
+        return
+
+    g = torch.Generator().manual_seed(seed)
+    base_ds = subset.dataset
+    idxs = subset.indices
+    n_flip = int(len(idxs) * noise_rate)
+    perm = torch.randperm(len(idxs), generator=g)[:n_flip]
+
+    if hasattr(base_ds, "targets"):
+        for p in perm.tolist():
+            j = idxs[p]
+            old = int(base_ds.targets[j])
+            new = torch.randint(low=0, high=num_classes - 1, size=(1,), generator=g).item()
+            if new >= old:
+                new += 1
+            base_ds.targets[j] = new
+    else:
+        raise ValueError("Dataset does not expose .targets for label corruption")
 
 # -----------------------------
 # Conformal stuff.

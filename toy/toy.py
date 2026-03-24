@@ -25,6 +25,7 @@ class ExperimentConfig:
     epochs_dp: int = 3
     verbose: bool = False
     dataset: str = "cifar10"
+    train_label_noise: float = 0.0
 
     coverage_target: float = 0.90
     nominal_coverage: float = 0.91
@@ -53,13 +54,13 @@ def run_experiment(args: ExperimentConfig) -> dict:
     if args.dataset in ["mnist", "fashionmnist"]:
         tfm = transforms.Compose([transforms.ToTensor()])
         DatasetClass = datasets.MNIST if args.dataset == "mnist" else datasets.FashionMNIST
-    elif args.dataset == "cifar10":
+    elif args.dataset in ["cifar10", "cifar100"]:
         tfm = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465),
                                  (0.2470, 0.2435, 0.2616)),
         ])
-        DatasetClass = datasets.CIFAR10
+        DatasetClass = datasets.CIFAR10 if args.dataset == "cifar10" else datasets.CIFAR100
     else:
         raise ValueError(f"Unknown dataset {args.dataset}")
 
@@ -75,6 +76,14 @@ def run_experiment(args: ExperimentConfig) -> dict:
         [train_size, cal_size],
         generator=torch.Generator().manual_seed(args.seed),  # Needed when make_reproducible is used?
     )
+    if args.dataset == "cifar10":
+        num_classes = 10
+    elif args.dataset == "cifar100":
+        num_classes = 100
+    else:
+        num_classes = 10
+
+    inject_label_noise(ds_train, args.train_label_noise, num_classes, args.seed)
 
     # TODO: Not quite so sure how to best pick num_workers.
     train_loader = DataLoader(ds_train, batch_size=args.batch_size, shuffle=True,
@@ -120,12 +129,14 @@ def run_experiment(args: ExperimentConfig) -> dict:
             "coverage_target": coverage_target,
             "beta": float(args.beta),
             "label_smoothing": float(args.label_smoothing),
+            "train_label_noise": float(args.train_label_noise),
         },
     }
 
-    if args.dataset == "cifar10":
-        model_np = TinyCNN(in_channels=3, num_classes=10).to(device)
-        model_dp = TinyCNN(in_channels=3, num_classes=10).to(device)
+    if args.dataset in ["cifar10", "cifar100"]:
+        num_classes = 10 if args.dataset == "cifar10" else 100
+        model_np = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
+        model_dp = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
     else:
         model_np = TinyMLP().to(device)
         model_dp = TinyMLP().to(device)
@@ -134,7 +145,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     # Non-private baseline.
     # -----------------------------
     print("\n[stage] non-private training")
-    if args.dataset == "cifar10":
+    if args.dataset in ["cifar10", "cifar100"]:
         opt_np = torch.optim.Adam(model_np.parameters(), lr=1e-3)
     else:
         opt_np = torch.optim.SGD(model_np.parameters(), lr=0.2, momentum=0.9)
@@ -166,7 +177,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     # DP training.
     # -----------------------------
     print("\n[stage] dp training")
-    if args.dataset == "cifar10":
+    if args.dataset in ["cifar10", "cifar100"]:
         opt_dp = torch.optim.SGD(model_dp.parameters(), lr=0.02, momentum=0.9)
     else:
         opt_dp = torch.optim.SGD(model_dp.parameters(), lr=0.2, momentum=0.9)
@@ -393,7 +404,7 @@ def main():
     ap.add_argument("--epochs_dp", type=int, default=3)
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--dataset", type=str, default="cifar10",
-                    choices=["mnist", "fashionmnist", "cifar10"])
+                    choices=["mnist", "fashionmnist", "cifar10", "cifar100"])
 
     # "Contract-like"-specific made-up knobs.
     # ap.add_argument("--coverage", type=float, default=0.90)
@@ -406,6 +417,7 @@ def main():
     ap.add_argument("--beta", type=float, default=1e-3)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--label_smoothing", type=float, default=0.0)
+    ap.add_argument("--train_label_noise", type=float, default=0.0)
 
 
     # Calibration split.
@@ -415,8 +427,6 @@ def main():
 
     # Turn args in ExperimentConfig object.
     cfg = ExperimentConfig(**vars(args))
-    run_experiment(cfg)
-
     run_experiment(cfg)
 
 if __name__ == "__main__":
