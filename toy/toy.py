@@ -11,40 +11,36 @@ from torchvision import datasets, transforms
 from conformal import aps_scores, split_conformal_threshold, summarize_scores, save_score_hist, summarize_set_sizes
 from dp import dp_histogram_quantile_threshold
 from utils import *
+from dataclasses import asdict, dataclass
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    # General arguments.
-    ap.add_argument("--data_dir", type=str, default="data")
-    ap.add_argument("--out_dir", type=str, default="toy_out")
-    ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda"])
-    ap.add_argument("--batch_size", type=int, default=256)
-    ap.add_argument("--epochs_np", type=int, default=3)
-    ap.add_argument("--epochs_dp", type=int, default=3)
-    ap.add_argument("--verbose", action="store_true")
-    ap.add_argument("--dataset", type=str, default="cifar10",
-                choices=["mnist", "fashionmnist", "cifar10"])
+@dataclass
+class ExperimentConfig:
+    data_dir: str = "data"
+    out_dir: str = "toy_out"
+    seed: int = 0
+    device: str = "cuda"
+    batch_size: int = 256
+    epochs_np: int = 3
+    epochs_dp: int = 3
+    verbose: bool = False
+    dataset: str = "cifar10"
 
-    # "Contract-like"-specific made-up knobs.
-    # ap.add_argument("--coverage", type=float, default=0.90)
-    ap.add_argument("--coverage_target", type=float, default=0.90)
-    ap.add_argument("--nominal_coverage", type=float, default=0.91)
-    ap.add_argument("--dp_train_eps", type=float, default=4.0)
-    ap.add_argument("--dp_delta", type=float, default=1e-5)
-    ap.add_argument("--dp_eps_cal", type=float, default=1.0)
-    ap.add_argument("--num_bins", type=int, default=50)
-    ap.add_argument("--beta", type=float, default=1e-3)
-    ap.add_argument("--temperature", type=float, default=1.0)
-    ap.add_argument("--label_smoothing", type=float, default=0.0)
+    coverage_target: float = 0.90
+    nominal_coverage: float = 0.91
+    dp_train_eps: float = 4.0
+    dp_delta: float = 1e-5
+    dp_eps_cal: float = 1.0
+    num_bins: int = 50
+    beta: float = 1e-3
+    temperature: float = 1.0
+    label_smoothing: float = 0.0
+    cal_size: int = 10000
+
+    write_report: bool = True
 
 
-    # Calibration split.
-    ap.add_argument("--cal_size", type=int, default=10000)  # MNIST has 60K data points.
-
-    args = ap.parse_args()
-
+def run_experiment(args: ExperimentConfig) -> dict:
     # Folder/seed setup.
     ensure_dir(args.out_dir)
     ensure_dir(args.data_dir)
@@ -306,21 +302,22 @@ def main():
     # save_score_hist(scores_cal_np, f"{args.out_dir}/np_scores_seed_{args.seed}.png", "NP APS scores")
     # save_score_hist(scores_cal_dp, f"{args.out_dir}/dp_scores_seed_{args.seed}.png", "DP APS scores")
 
-    out_path = os.path.join(
-        args.out_dir,
-        f"report_traineps_{args.dp_train_eps}"
-        f"_caleps_{args.dp_eps_cal}"
-        f"_calsize_{args.cal_size}"
-        f"_nomcov_{args.nominal_coverage}"
-        f"_target_{args.coverage_target}"
-        f"_beta_{args.beta}"
-        f"_lsmooth_{args.label_smoothing}"
-        f"_seed_{args.seed}.json"
-    )
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, sort_keys=True)
+    if args.write_report:
+        out_path = os.path.join(
+            args.out_dir,
+            f"report_traineps_{args.dp_train_eps}"
+            f"_caleps_{args.dp_eps_cal}"
+            f"_calsize_{args.cal_size}"
+            f"_nomcov_{args.nominal_coverage}"
+            f"_target_{args.coverage_target}"
+            f"_beta_{args.beta}"
+            f"_lsmooth_{args.label_smoothing}"
+            f"_seed_{args.seed}.json"
+        )
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, sort_keys=True)
 
-    print(f"\n[done] wrote {out_path}")
+        print(f"\n[done] wrote {out_path}")
 
     if args.verbose:
         # Some APS debugging.
@@ -346,6 +343,80 @@ def main():
             "top1_prob_p90", f"{torch.quantile(top1_probs, 0.9).item():.4f}",
         )
 
+    result = {
+        "config": {
+            "dataset": args.dataset,
+            "seed": args.seed,
+            "dp_train_eps": float(args.dp_train_eps),
+            "dp_eps_cal": float(args.dp_eps_cal),
+            "nominal_coverage": float(args.nominal_coverage),
+            "coverage_target": float(args.coverage_target),
+            "cal_size": int(args.cal_size),
+            "label_smoothing": float(args.label_smoothing),
+            "temperature": float(args.temperature),
+        },
+        "formal": {
+            "overall_formal_ok": bool(report["pass_fail"]["overall_formal_ok"]),
+            "coverage_bound_formal_ok": bool(report["pass_fail"]["coverage_bound_formal_ok"]),
+            "privacy_training_ok": bool(report["pass_fail"]["privacy_training_ok"]),
+            "privacy_total_basic_composition_ok": bool(report["pass_fail"]["privacy_total_basic_composition_ok"]),
+            "coverage_lower_bound_formal": float(report["dp_calibration"]["coverage_lower_bound_formal"]),
+        },
+        "empirical": {
+            "overall_empirical_ok": bool(report["pass_fail"]["overall_empirical_ok"]),
+            "coverage_empirical_ok": bool(report["pass_fail"]["coverage_empirical_ok"]),
+            "test_accuracy_dp": float(report["dp_training"]["test_accuracy"]),
+            "test_coverage_dpcal": float(report["dp_calibration"]["test_coverage_dp_cal"]),
+            "avg_set_size_dpcal": float(report["dp_calibration"]["avg_set_size_dp_cal"]),
+            "tau_dp_cal": float(report["dp_calibration"]["tau_dp_cal"]),
+            "tau_nonprivate_cal": float(report["dp_training"]["tau_nonprivate_cal"]),
+        },
+        "privacy": {
+            "epsilon_train_realized": float(report["dp_training"]["epsilon_realized"]),
+            "epsilon_total_basic_composition": float(report["privacy_composition"]["epsilon_total_basic_composition"]),
+        },
+        "full_report": report,
+    }
+    return result
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    # General arguments.
+    ap.add_argument("--data_dir", type=str, default="data")
+    ap.add_argument("--out_dir", type=str, default="toy_out")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda"])
+    ap.add_argument("--batch_size", type=int, default=256)
+    ap.add_argument("--epochs_np", type=int, default=3)
+    ap.add_argument("--epochs_dp", type=int, default=3)
+    ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--dataset", type=str, default="cifar10",
+                    choices=["mnist", "fashionmnist", "cifar10"])
+
+    # "Contract-like"-specific made-up knobs.
+    # ap.add_argument("--coverage", type=float, default=0.90)
+    ap.add_argument("--coverage_target", type=float, default=0.90)
+    ap.add_argument("--nominal_coverage", type=float, default=0.91)
+    ap.add_argument("--dp_train_eps", type=float, default=4.0)
+    ap.add_argument("--dp_delta", type=float, default=1e-5)
+    ap.add_argument("--dp_eps_cal", type=float, default=1.0)
+    ap.add_argument("--num_bins", type=int, default=50)
+    ap.add_argument("--beta", type=float, default=1e-3)
+    ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--label_smoothing", type=float, default=0.0)
+
+
+    # Calibration split.
+    ap.add_argument("--cal_size", type=int, default=10000)  # MNIST has 60K data points.
+
+    args = ap.parse_args()
+
+    # Turn args in ExperimentConfig object.
+    cfg = ExperimentConfig(**vars(args))
+    run_experiment(cfg)
+
+    run_experiment(cfg)
 
 if __name__ == "__main__":
     main()
