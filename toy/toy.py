@@ -262,7 +262,8 @@ def run_experiment(args: ExperimentConfig) -> dict:
     num_classes = probs_cal_dp.shape[1]
     warning_threshold = 0.7
     if eval_dp_dpcal["avg_set_size"] > warning_threshold * num_classes:
-        print(f"[warn] avg_set_size is large ({eval_dp_dpcal['avg_set_size']*100}% of the number of classes); "
+        print(f"[warn] avg_set_size is large ({(eval_dp_dpcal['avg_set_size']/num_classes)*100}%"
+              f" of the number of classes); "
               f"DP calibration may be too noisy or model too weak; "
               "Try larger dp_eps_cal or larger cal_size.")
 
