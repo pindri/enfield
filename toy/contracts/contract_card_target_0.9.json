@@ -1,0 +1,39 @@
+{
+  "decision": {
+    "status": "FORMALLY_INFEASIBLE"
+  },
+  "request": {
+    "beta": 0.001,
+    "coverage_target": 0.9,
+    "max_dp_eps_cal": 8,
+    "max_dp_eps_train": 4
+  },
+  "search_space": {
+    "dp_eps_cal": [
+      4.0,
+      8.0,
+      10.0
+    ],
+    "dp_train_eps": [
+      4.0,
+      8.0,
+      10.0
+    ],
+    "nominal_coverage": [
+      0.7,
+      0.8,
+      0.9
+    ],
+    "seed": [
+      0
+    ]
+  },
+  "search_summary": {
+    "empirical_checked_count": 0,
+    "empirical_evals": 0,
+    "empirical_feasible_count": 0,
+    "formal_evals": 27,
+    "formal_feasible_count": 0,
+    "formal_frontier_count": 0
+  }
+}

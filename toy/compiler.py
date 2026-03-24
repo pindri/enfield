@@ -2,16 +2,21 @@ from dataclasses import dataclass, replace
 from typing import Optional
 
 from toy import ExperimentConfig, run_experiment
+from contract_card import *
+from utils import ensure_dir
 
 
 @dataclass
 class Contract:
     coverage_target: float
     beta: float = 1e-3
+    max_dp_eps_train: float = 8.0
+    max_dp_eps_cal: float = 8.0
 
 
 @dataclass
 class SearchGrid:
+    # TODO: Maybe include targets here?
     dp_train_eps: list[float]
     dp_eps_cal: list[float]
     nominal_coverage: list[float]
@@ -77,13 +82,13 @@ def candidate_configs(base: ExperimentConfig, contract: Contract, grid: SearchGr
                 )
 
 
-def formal_check(cfg: ExperimentConfig) -> dict:
+def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
     coverage_lower_bound_formal = cfg.nominal_coverage - cfg.beta
     coverage_bound_formal_ok = coverage_lower_bound_formal >= cfg.coverage_target
 
-    # TODO: Placeholder: the search grid itself is assumed admissible.
-    privacy_training_ok = True
-    privacy_total_basic_composition_ok = True
+    # TODO: Not the best namings.
+    privacy_training_ok = cfg.dp_eps_cal <= contract.max_dp_eps_cal
+    privacy_total_basic_composition_ok = cfg.dp_train_eps <= contract.max_dp_eps_train
 
     overall_formal_ok = (
         coverage_bound_formal_ok
@@ -116,7 +121,7 @@ def formal_search(base: ExperimentConfig, contract: Contract, grid: SearchGrid):
 
     for cfg in candidate_configs(base, contract, grid):
         cfg = replace(cfg, seed=formal_seed)
-        result = formal_check(cfg)
+        result = formal_check(cfg, contract)
         n += 1
         if result["formal"]["overall_formal_ok"]:
             feasible.append((cfg, result))
@@ -401,23 +406,33 @@ def print_region_summary(regions: RegionResult):
 
 
 def main():
+
+    out_dir = "contracts/"
+    ensure_dir(out_dir)
+
     grid = SearchGrid(
-        dp_train_eps=[4.0, 8.0],
-        dp_eps_cal=[4.0, 8.0],
+        dp_train_eps=[4.0, 8.0, 10.0],
+        dp_eps_cal=[4.0, 8.0, 10.0],
         nominal_coverage=[0.7, 0.8, 0.9],
         seeds=[0],
     )
 
     for target in [0.7, 0.8, 0.9]:
-        contract = Contract(coverage_target=target, beta=1e-3)
+        contract = Contract(
+            coverage_target=target,
+            beta=1e-3,
+            max_dp_eps_cal=8,
+            max_dp_eps_train=4,
+        )
 
         print(f"\n=== target={target} ===")
         regions = compute_feasible_regions(contract, grid)
-        print_region_summary(regions)
-
+        # print_region_summary(regions)
         result = compile_contract(contract, grid, regions=regions)
-        print_summary(result)
-
+        # print_summary(result)
+        card = build_contract_card(contract, grid, result, regions)
+        print_contract_card(card)
+        save_contract_card(card, f"{out_dir}/contract_card_target_{target}.json")
 
 if __name__ == "__main__":
     main()
