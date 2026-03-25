@@ -66,6 +66,32 @@ class TinyCNN(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+
+class MediumPowerfulCNN(nn.Module):
+    def __init__(self, in_channels=3, num_classes=10):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Flatten(),
+            nn.Linear(128 * 8 * 8, 256),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(256, num_classes),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
 def inject_label_noise(subset, noise_rate: float, num_classes: int, seed: int):
     if noise_rate <= 0.0:
         return
@@ -143,7 +169,7 @@ def train_epoch(model, loader, optimizer, device, label_smoothing=0.0) -> float:
         optimizer.zero_grad(set_to_none=True)
         logits = model(x)
         if label_smoothing > 0.0:
-            loss = F.cross_entropy(logits, y, label_smoothing=0.1)
+            loss = F.cross_entropy(logits, y, label_smoothing=label_smoothing)
         else:
             loss = F.cross_entropy(logits, y)
         loss.backward()

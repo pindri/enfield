@@ -32,7 +32,8 @@ class ExperimentConfig:
     dp_eps_train: float = 4.0
     dp_delta: float = 1e-5
     dp_eps_cal: float = 1.0
-    num_bins: int = 50
+    # num_bins: int = 50
+    num_bins: int = 100
     beta: float = 1e-3
     temperature: float = 1.0
     label_smoothing: float = 0.0
@@ -137,6 +138,8 @@ def run_experiment(args: ExperimentConfig) -> dict:
         num_classes = 10 if args.dataset == "cifar10" else 100
         model_np = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
         model_dp = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
+        # model_np = MediumPowerfulCNN(in_channels=3, num_classes=num_classes).to(device)
+        # model_dp = MediumPowerfulCNN(in_channels=3, num_classes=num_classes).to(device)
     else:
         model_np = TinyMLP().to(device)
         model_dp = TinyMLP().to(device)
