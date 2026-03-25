@@ -26,7 +26,7 @@ for seed in 0 1 2; do
         --seed "$seed" \
         --epochs_np "$EPOCHS_NP" \
         --epochs_dp "$EPOCHS_DP" \
-        --dp_train_eps 4.0 \
+        --dp_eps_train 4.0 \
         --dp_eps_cal "$ceps" \
         --cal_size "$CAL_SIZE" \
         --nominal_coverage "$nomcov" \
@@ -54,7 +54,7 @@ for seed in 0 1 2; do
       --seed "$seed" \
       --epochs_np "$EPOCHS_NP" \
       --epochs_dp "$EPOCHS_DP" \
-      --dp_train_eps "$teps" \
+      --dp_eps_train "$teps" \
       --dp_eps_cal 4.0 \
       --cal_size "$CAL_SIZE" \
       --nominal_coverage 0.8 \
@@ -82,7 +82,7 @@ for seed in 0 1; do
         --seed "$seed" \
         --epochs_np "$EPOCHS_NP" \
         --epochs_dp "$EPOCHS_DP" \
-        --dp_train_eps 4.0 \
+        --dp_eps_train 4.0 \
         --dp_eps_cal 4.0 \
         --cal_size "$CAL_SIZE" \
         --nominal_coverage "$nomcov" \

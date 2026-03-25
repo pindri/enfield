@@ -105,7 +105,7 @@ def dp_histogram_quantile_threshold(
         "lambda": float(lam),
         "tau": float(tau),
     }
-    return tau, info
+    return round(tau, 4), info
 
 
 def _laplace_noise(shape, scale: float, generator: torch.Generator) -> torch.Tensor:

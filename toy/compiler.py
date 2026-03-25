@@ -12,12 +12,13 @@ class Contract:
     beta: float = 1e-3
     max_dp_eps_train: float = 8.0
     max_dp_eps_cal: float = 8.0
+    objective: str = "Among configurations that satisfy the contract, pick the least conservative one."
 
 
 @dataclass
 class SearchGrid:
     # TODO: Maybe include targets here?
-    dp_train_eps: list[float]
+    dp_eps_train: list[float]
     dp_eps_cal: list[float]
     nominal_coverage: list[float]
     seeds: list[int]
@@ -25,10 +26,12 @@ class SearchGrid:
 
 @dataclass
 class RegionResult:
+    formal_checked: list[tuple[ExperimentConfig, dict]]
     formal_feasible: list[tuple[ExperimentConfig, dict]]
     formal_frontier: list[tuple[ExperimentConfig, dict]]
     empirical_checked: list[tuple[ExperimentConfig, dict]]
     empirical_feasible: list[tuple[ExperimentConfig, dict]]
+    best_formal_candidate: tuple[ExperimentConfig, dict] | None
     num_formal_evals: int
     num_empirical_evals: int
 
@@ -56,7 +59,7 @@ def make_base_config() -> ExperimentConfig:
         verbose=False,
         coverage_target=0.8,
         nominal_coverage=0.8,
-        dp_train_eps=4.0,
+        dp_eps_train=4.0,
         dp_delta=1e-5,
         dp_eps_cal=4.0,
         num_bins=50,
@@ -69,12 +72,12 @@ def make_base_config() -> ExperimentConfig:
 
 
 def candidate_configs(base: ExperimentConfig, contract: Contract, grid: SearchGrid):
-    for teps in grid.dp_train_eps:
+    for teps in grid.dp_eps_train:
         for ceps in grid.dp_eps_cal:
             for nomcov in grid.nominal_coverage:
                 yield replace(
                     base,
-                    dp_train_eps=teps,
+                    dp_eps_train=teps,
                     dp_eps_cal=ceps,
                     nominal_coverage=nomcov,
                     coverage_target=contract.coverage_target,
@@ -88,7 +91,7 @@ def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
 
     # TODO: Not the best namings.
     privacy_training_ok = cfg.dp_eps_cal <= contract.max_dp_eps_cal
-    privacy_total_basic_composition_ok = cfg.dp_train_eps <= contract.max_dp_eps_train
+    privacy_total_basic_composition_ok = cfg.dp_eps_train <= contract.max_dp_eps_train
 
     overall_formal_ok = (
         coverage_bound_formal_ok
@@ -98,7 +101,7 @@ def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
 
     return {
         "config": {
-            "dp_train_eps": cfg.dp_train_eps,
+            "dp_eps_train": cfg.dp_eps_train,
             "dp_eps_cal": cfg.dp_eps_cal,
             "nominal_coverage": cfg.nominal_coverage,
             "coverage_target": cfg.coverage_target,
@@ -115,6 +118,7 @@ def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
 
 
 def formal_search(base: ExperimentConfig, contract: Contract, grid: SearchGrid):
+    checked: list[tuple[ExperimentConfig, dict]] = []
     feasible: list[tuple[ExperimentConfig, dict]] = []
     n = 0
     formal_seed = grid.seeds[0]
@@ -122,12 +126,26 @@ def formal_search(base: ExperimentConfig, contract: Contract, grid: SearchGrid):
     for cfg in candidate_configs(base, contract, grid):
         cfg = replace(cfg, seed=formal_seed)
         result = formal_check(cfg, contract)
+        checked.append((cfg, result))
         n += 1
         if result["formal"]["overall_formal_ok"]:
             feasible.append((cfg, result))
 
-    return feasible, n
+    return checked, feasible, n
 
+def best_formal_candidate(formal_checked: list[tuple[ExperimentConfig, dict]]):
+    if not formal_checked:
+        return None
+
+    return max(
+        formal_checked,
+        key=lambda x: (
+            x[1]["formal"]["coverage_lower_bound_formal"],
+            -x[0].nominal_coverage,
+            -x[0].dp_eps_cal,
+            -x[0].dp_eps_train,
+        ),
+    )
 
 def dominates_for_frontier(cfg_a: ExperimentConfig, cfg_b: ExperimentConfig) -> bool:
     """
@@ -138,12 +156,12 @@ def dominates_for_frontier(cfg_a: ExperimentConfig, cfg_b: ExperimentConfig) -> 
     at_least_as_aggressive = (
         cfg_a.nominal_coverage <= cfg_b.nominal_coverage
         and cfg_a.dp_eps_cal >= cfg_b.dp_eps_cal
-        and cfg_a.dp_train_eps >= cfg_b.dp_train_eps
+        and cfg_a.dp_eps_train >= cfg_b.dp_eps_train
     )
     strictly_more_aggressive = (
         cfg_a.nominal_coverage < cfg_b.nominal_coverage
         or cfg_a.dp_eps_cal > cfg_b.dp_eps_cal
-        or cfg_a.dp_train_eps > cfg_b.dp_train_eps
+        or cfg_a.dp_eps_train > cfg_b.dp_eps_train
     )
     return at_least_as_aggressive and strictly_more_aggressive
 
@@ -167,7 +185,7 @@ def formal_frontier_candidates(formal_feasible: list[tuple[ExperimentConfig, dic
             frontier.append((cfg, fres))
 
     frontier.sort(
-        key=lambda x: (x[0].nominal_coverage, -x[0].dp_eps_cal, -x[0].dp_train_eps)
+        key=lambda x: (x[0].nominal_coverage, -x[0].dp_eps_cal, -x[0].dp_eps_train)
     )
     return frontier
 
@@ -186,12 +204,12 @@ def objective(cfg: ExperimentConfig, result: dict):
     """
     avg_size = result["empirical"]["avg_set_size_dpcal"]
     tau_penalty = 100.0 if is_pathological(result) else 0.0
-    total_eps = cfg.dp_train_eps + cfg.dp_eps_cal
+    total_eps = cfg.dp_eps_train + cfg.dp_eps_cal
     return (
         avg_size + tau_penalty,
         cfg.nominal_coverage,
         -cfg.dp_eps_cal,
-        -cfg.dp_train_eps,
+        -cfg.dp_eps_train,
         total_eps,
     )
 
@@ -205,7 +223,7 @@ def summarize_seed_results(cfg: ExperimentConfig, seed_results: list[dict], form
     return {
         "config": {
             "dataset": cfg.dataset,
-            "dp_train_eps": cfg.dp_train_eps,
+            "dp_eps_train": cfg.dp_eps_train,
             "dp_eps_cal": cfg.dp_eps_cal,
             "nominal_coverage": cfg.nominal_coverage,
             "coverage_target": cfg.coverage_target,
@@ -258,7 +276,7 @@ def empirical_refine(frontier: list[tuple[ExperimentConfig, dict]], seeds: list[
                     {
                         "config": {
                             "dataset": cfg.dataset,
-                            "dp_train_eps": cfg.dp_train_eps,
+                            "dp_eps_train": cfg.dp_eps_train,
                             "dp_eps_cal": cfg.dp_eps_cal,
                             "nominal_coverage": cfg.nominal_coverage,
                             "coverage_target": cfg.coverage_target,
@@ -299,13 +317,17 @@ def choose_best(empirical_feasible: list[tuple[ExperimentConfig, dict]]):
 def compute_feasible_regions(contract: Contract, grid: SearchGrid) -> RegionResult:
     base = make_base_config()
 
-    formal_feasible, n_formal = formal_search(base, contract, grid)
+    formal_checked, formal_feasible, n_formal = formal_search(base, contract, grid)
+    best_failed_or_best = best_formal_candidate(formal_checked)
+
     if not formal_feasible:
         return RegionResult(
+            formal_checked=formal_checked,
             formal_feasible=[],
             formal_frontier=[],
             empirical_checked=[],
             empirical_feasible=[],
+            best_formal_candidate=best_failed_or_best,
             num_formal_evals=n_formal,
             num_empirical_evals=0,
         )
@@ -314,10 +336,12 @@ def compute_feasible_regions(contract: Contract, grid: SearchGrid) -> RegionResu
     checked, empirical_feasible, n_emp = empirical_refine(frontier, grid.seeds)
 
     return RegionResult(
+        formal_checked=formal_checked,
         formal_feasible=formal_feasible,
         formal_frontier=frontier,
         empirical_checked=checked,
         empirical_feasible=empirical_feasible,
+        best_formal_candidate=best_failed_or_best,
         num_formal_evals=n_formal,
         num_empirical_evals=n_emp,
     )
@@ -373,7 +397,7 @@ def print_summary(result: CompileResult):
     print(
         "chosen config:",
         {
-            "dp_train_eps": cfg.dp_train_eps,
+            "dp_eps_train": cfg.dp_eps_train,
             "dp_eps_cal": cfg.dp_eps_cal,
             "nominal_coverage": cfg.nominal_coverage,
             "coverage_target": cfg.coverage_target,
@@ -411,7 +435,7 @@ def main():
     ensure_dir(out_dir)
 
     grid = SearchGrid(
-        dp_train_eps=[4.0, 8.0, 10.0],
+        dp_eps_train=[4.0, 8.0, 10.0],
         dp_eps_cal=[4.0, 8.0, 10.0],
         nominal_coverage=[0.7, 0.8, 0.9],
         seeds=[0],
@@ -427,9 +451,9 @@ def main():
 
         print(f"\n=== target={target} ===")
         regions = compute_feasible_regions(contract, grid)
-        # print_region_summary(regions)
+        print_region_summary(regions)
         result = compile_contract(contract, grid, regions=regions)
-        # print_summary(result)
+        print_summary(result)
         card = build_contract_card(contract, grid, result, regions)
         print_contract_card(card)
         save_contract_card(card, f"{out_dir}/contract_card_target_{target}.json")

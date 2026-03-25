@@ -29,7 +29,7 @@ class ExperimentConfig:
 
     coverage_target: float = 0.90
     nominal_coverage: float = 0.91
-    dp_train_eps: float = 4.0
+    dp_eps_train: float = 4.0
     dp_delta: float = 1e-5
     dp_eps_cal: float = 1.0
     num_bins: int = 50
@@ -105,7 +105,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
 
     # TODO: update this at some point.
     contract = Contract(
-        epsilon_train=float(args.dp_train_eps),
+        epsilon_train=float(args.dp_eps_train),
         delta=float(args.dp_delta),
         epsilon_cal=float(args.dp_eps_cal),
         coverage_target=coverage_target,
@@ -190,7 +190,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
         optimizer=opt_dp,
         data_loader=train_loader,
         epochs=args.epochs_dp,
-        target_epsilon=args.dp_train_eps,
+        target_epsilon=args.dp_eps_train,
         target_delta=args.dp_delta,
         max_grad_norm=1.0,
     )
@@ -223,7 +223,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     eval_dp_nonpriv_cal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_nonpriv_cal, device, temperature=args.temperature)
 
     report["dp_training"] = {
-        "epsilon_target": float(args.dp_train_eps),
+        "epsilon_target": float(args.dp_eps_train),
         "epsilon_realized": eps_realized,
         "delta": float(args.dp_delta),
         "noise_multiplier": noise_multiplier,
@@ -290,9 +290,9 @@ def run_experiment(args: ExperimentConfig) -> dict:
     coverage_bound_formal_ok = coverage_lb_formal >= coverage_target
     # Empirical check: observed test coverage meets the requested target.
     coverage_empirical_ok = eval_dp_dpcal["coverage"] >= coverage_target
-    privacy_training_ok = eps_realized <= args.dp_train_eps + 1e-6
+    privacy_training_ok = eps_realized <= args.dp_eps_train + 1e-6
     privacy_total_basic_composition_ok = ((eps_realized + float(args.dp_eps_cal))
-                                          <= (args.dp_train_eps + float(args.dp_eps_cal) + 1e-6))
+                                          <= (args.dp_eps_train + float(args.dp_eps_cal) + 1e-6))
 
     report["pass_fail"] = {
         "privacy_training_ok": privacy_training_ok,
@@ -317,7 +317,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     if args.write_report:
         out_path = os.path.join(
             args.out_dir,
-            f"report_traineps_{args.dp_train_eps}"
+            f"report_traineps_{args.dp_eps_train}"
             f"_caleps_{args.dp_eps_cal}"
             f"_calsize_{args.cal_size}"
             f"_nomcov_{args.nominal_coverage}"
@@ -359,7 +359,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
         "config": {
             "dataset": args.dataset,
             "seed": args.seed,
-            "dp_train_eps": float(args.dp_train_eps),
+            "dp_eps_train": float(args.dp_eps_train),
             "dp_eps_cal": float(args.dp_eps_cal),
             "nominal_coverage": float(args.nominal_coverage),
             "coverage_target": float(args.coverage_target),
@@ -410,7 +410,7 @@ def main():
     # ap.add_argument("--coverage", type=float, default=0.90)
     ap.add_argument("--coverage_target", type=float, default=0.90)
     ap.add_argument("--nominal_coverage", type=float, default=0.91)
-    ap.add_argument("--dp_train_eps", type=float, default=4.0)
+    ap.add_argument("--dp_eps_train", type=float, default=4.0)
     ap.add_argument("--dp_delta", type=float, default=1e-5)
     ap.add_argument("--dp_eps_cal", type=float, default=1.0)
     ap.add_argument("--num_bins", type=int, default=50)
