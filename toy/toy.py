@@ -252,6 +252,29 @@ def run_experiment(args: ExperimentConfig) -> dict:
         seed=args.seed,
         return_info=True,
     )
+
+    grid = dpcal_info["grid"]
+    counts_cdf = dpcal_info["counts_cdf"]
+    k = int(dpcal_info["k"])
+    lam = float(dpcal_info["lambda"])
+
+    q_k_mask = (counts_cdf >= k)
+    q_k_idx = int(torch.nonzero(q_k_mask, as_tuple=False)[0].item()) if q_k_mask.any() else len(grid) - 1
+
+    k_plus_2lam = int(math.ceil(k + 2.0 * lam))
+    q_k2_mask = (counts_cdf >= k_plus_2lam)
+    q_k2_idx = int(torch.nonzero(q_k2_mask, as_tuple=False)[0].item()) if q_k2_mask.any() else len(grid) - 1
+
+    tau_q_k = float(grid[q_k_idx].item())
+    tau_q_k2 = float(grid[q_k2_idx].item())
+
+    observed_inflation_tau = float(tau_dp_cal - tau_dp_nonpriv_cal)
+    certificate_width_tau = float(tau_q_k2 - tau_q_k)
+
+    crossing_index_dp = int(dpcal_info["crossing_index"])
+    theorem_tau_ok = bool(tau_q_k <= tau_dp_cal <= tau_q_k2 + 1e-12)
+    theorem_idx_ok = bool(q_k_idx <= crossing_index_dp <= q_k2_idx)
+
     eval_dp_dpcal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_cal, device, temperature=args.temperature)
 
     report["dp_calibration"] = {
@@ -270,6 +293,26 @@ def run_experiment(args: ExperimentConfig) -> dict:
         "mechanism": "Laplace-noisy cumulative counts on a fixed public grid",
         "guarantee": "P(Y in C_APS(X; tau_hat)) >= 1 - alpha - beta",
     }
+
+    report["dp_calibration"].update({
+        "q_k_index": q_k_idx,
+        "q_kplus2lambda_index": q_k2_idx,
+        "crossing_index_dp": crossing_index_dp,
+        "tau_q_k": tau_q_k,
+        "tau_q_kplus2lambda": tau_q_k2,
+        "certificate_width_tau": certificate_width_tau,
+        "observed_inflation_tau": observed_inflation_tau,
+        "theorem_tau_ok": theorem_tau_ok,
+        "theorem_idx_ok": theorem_idx_ok,
+    })
+    print(
+        f"[dpcal-cert] "
+        f"k={k} lam={lam:.2f} "
+        f"idx_np={q_k_idx} idx_dp={crossing_index_dp} idx_hi={q_k2_idx} "
+        f"tau_np={tau_q_k:.4f} tau_dp={tau_dp_cal:.4f} tau_hi={tau_q_k2:.4f} "
+        f"obs_gap={observed_inflation_tau:.4f} cert_gap={certificate_width_tau:.4f} "
+        f"tau_ok={theorem_tau_ok} idx_ok={theorem_idx_ok}"
+    )
 
     print(f"[dpcal] tau_dp={tau_dp_cal:.4f} coverage={eval_dp_dpcal['coverage']:.4f} avg_set_size={eval_dp_dpcal['avg_set_size']:.3f}")
 
@@ -331,6 +374,42 @@ def run_experiment(args: ExperimentConfig) -> dict:
         )
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, sort_keys=True)
+
+        debug_path = os.path.join(
+            args.out_dir,
+            f"debug_traineps_{args.dp_eps_train}"
+            f"_caleps_{args.dp_eps_cal}"
+            f"_calsize_{args.cal_size}"
+            f"_nomcov_{args.nominal_coverage}"
+            f"_target_{args.coverage_target}"
+            f"_beta_{args.beta}"
+            f"_lsmooth_{args.label_smoothing}"
+            f"_seed_{args.seed}.pt"
+        )
+
+        torch.save(
+            {
+                "scores_cal_dp": scores_cal_dp.detach().cpu(),
+                "grid": grid.detach().cpu(),
+                "counts_cdf": counts_cdf.detach().cpu(),
+                "k": k,
+                "lambda": lam,
+                "crossing_index_dp": crossing_index_dp,
+                "q_k_index": q_k_idx,
+                "q_kplus2lambda_index": q_k2_idx,
+                "tau_dp_cal": float(tau_dp_cal),
+                "tau_nonprivate_cal": float(tau_dp_nonpriv_cal),
+                "tau_q_k": tau_q_k,
+                "tau_q_kplus2lambda": tau_q_k2,
+                "certificate_width_tau": certificate_width_tau,
+                "observed_inflation_tau": observed_inflation_tau,
+                "theorem_tau_ok": theorem_tau_ok,
+                "theorem_idx_ok": theorem_idx_ok,
+            },
+            debug_path,
+        )
+
+        print(f"[done] wrote {debug_path}")
 
         print(f"\n[done] wrote {out_path}")
 

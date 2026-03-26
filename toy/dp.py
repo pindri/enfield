@@ -104,6 +104,8 @@ def dp_histogram_quantile_threshold(
         "noise_scale": float(noise_scale),
         "lambda": float(lam),
         "tau": float(tau),
+        "counts_cdf": counts_cdf.clone(),
+        "crossing_index": int(idx),
     }
     return round(tau, 4), info
 
