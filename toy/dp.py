@@ -106,6 +106,9 @@ def dp_histogram_quantile_threshold(
         "tau": float(tau),
         "counts_cdf": counts_cdf.clone(),
         "crossing_index": int(idx),
+        "grid": grid.clone(),
+        "target": float(target),
+        "noisy_cdf": noisy_cdf.clone(),
     }
     return round(tau, 4), info
 

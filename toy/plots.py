@@ -1,5 +1,4 @@
 import argparse
-import json
 from pathlib import Path
 
 import pandas as pd
@@ -7,7 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from matplotlib.colors import TwoSlopeNorm
-from utils import ensure_dir, make_reproducible
+
+from toy.utils import save_dataframe
+from utils import ensure_dir, make_reproducible, load_reports
 
 
 def filter_df(
@@ -27,97 +28,6 @@ def filter_df(
     if cal_size is not None:
         dff = dff[dff["cal_size"] == cal_size]
     return dff
-
-
-def load_reports(report_dir: str | Path) -> pd.DataFrame:
-    """
-    Load all report_*.json files and flatten the main fields used for plotting.
-    """
-    report_dir = Path(report_dir)
-    rows = []
-
-    for path in sorted(report_dir.glob("report_*.json")):
-        with open(path, "r", encoding="utf-8") as f:
-            r = json.load(f)
-
-        row = {
-            "file": path.name,
-
-            # Contract.
-            "alpha": r["contract"]["alpha"],
-            "coverage_target": r["contract"]["coverage_target"],
-            "delta": r["contract"]["delta"],
-            "epsilon_train_target": r["contract"]["epsilon_train"],
-            "epsilon_cal": r["contract"]["epsilon_cal"],
-            "num_bins": r["contract"]["num_bins"],
-
-            # Meta.
-            "cal_size": r["meta"]["cal_size"],
-            "train_size": r["meta"]["train_size"],
-            "seed": r["meta"]["seed"],
-            "device": r["meta"]["device"],
-            "nominal_coverage": r["meta"]["nominal_coverage"],
-            "label_smoothing": r["meta"]["label_smoothing"],
-
-            # Non-private baseline.
-            "np_accuracy": r["non_private"]["test_accuracy"],
-            "np_coverage": r["non_private"]["test_coverage"],
-            "np_avg_set_size": r["non_private"]["avg_set_size"],
-            "np_tau": r["non_private"]["tau"],
-
-            # DP training.
-            "dp_accuracy": r["dp_training"]["test_accuracy"],
-            "epsilon_train_realized": r["dp_training"]["epsilon_realized"],
-            "noise_multiplier": r["dp_training"]["noise_multiplier"],
-            "tau_nonprivate_cal": r["dp_training"]["tau_nonprivate_cal"],
-            "test_coverage_nonprivate_cal": r["dp_training"]["test_coverage_nonprivate_cal"],
-            "dp_avg_set_size_nonprivate_cal": r["dp_training"]["avg_set_size_nonprivate_cal"],
-
-            # DP composition.
-            "epsilon_total_basic_composition": r["privacy_composition"]["epsilon_total_basic_composition"],
-
-            # DP calibration.
-            "beta": r["dp_calibration"]["beta"],
-            "coverage_lower_bound_formal": r["dp_calibration"]["coverage_lower_bound_formal"],
-            "tau_dp_cal": r["dp_calibration"]["tau_dp_cal"],
-            "test_coverage_dp_cal": r["dp_calibration"]["test_coverage_dp_cal"],
-            "avg_set_size_dp_cal": r["dp_calibration"]["avg_set_size_dp_cal"],
-            "lambda": r["dp_calibration"]["lambda"],
-            "noise_scale": r["dp_calibration"]["noise_scale"],
-            "k": r["dp_calibration"]["k"],
-
-            # Pass/Fail.
-            "coverage_bound_formal_ok": r["pass_fail"]["coverage_bound_formal_ok"],
-            "privacy_training_ok": r["pass_fail"]["privacy_training_ok"],
-            "coverage_empirical_ok": r["pass_fail"]["coverage_empirical_ok"],
-            "overall_formal_ok": r["pass_fail"]["overall_formal_ok"],
-            "overall_empirical_ok": r["pass_fail"]["overall_empirical_ok"],
-        }
-
-        # Useful derived fields.
-        row["empirical_margin_to_bound"] = (
-            row["test_coverage_dp_cal"] - row["coverage_lower_bound_formal"]
-        )
-        row["empirical_margin_to_target"] = (
-            row["test_coverage_dp_cal"] - row["coverage_target"]
-        )
-        row["empirical_margin_to_nominal"] = (
-            row["test_coverage_dp_cal"] - row["nominal_coverage"]
-        )
-
-        rows.append(row)
-
-    if not rows:
-        raise FileNotFoundError(f"No report_*.json files found in {report_dir}")
-
-    df = pd.DataFrame(rows)
-    return df
-
-
-def save_dataframe(df: pd.DataFrame, out_csv: str | Path) -> None:
-    out_csv = Path(out_csv)
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False)
 
 
 def plot_coverage_vs_formal_bound(df: pd.DataFrame, outpath: str | Path) -> None:

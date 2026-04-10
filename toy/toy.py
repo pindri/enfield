@@ -24,6 +24,7 @@ class ExperimentConfig:
     epochs_np: int = 3
     epochs_dp: int = 3
     verbose: bool = False
+    save_artifacts: bool = False
     dataset: str = "cifar10"
     train_label_noise: float = 0.0
 
@@ -268,8 +269,10 @@ def run_experiment(args: ExperimentConfig) -> dict:
     tau_q_k = float(grid[q_k_idx].item())
     tau_q_k2 = float(grid[q_k2_idx].item())
 
-    observed_inflation_tau = float(tau_dp_cal - tau_dp_nonpriv_cal)
-    certificate_width_tau = float(tau_q_k2 - tau_q_k)
+    # Distance of the dp threshold to the non-private one and the grid one.
+    observed_inflation_tau_grid = round(float(tau_dp_cal - tau_q_k), 4)
+    observed_inflation_tau_exact = round(float(tau_dp_cal - tau_dp_nonpriv_cal), 4)
+    certificate_width_tau = round(float(tau_q_k2 - tau_q_k), 4)
 
     crossing_index_dp = int(dpcal_info["crossing_index"])
     theorem_tau_ok = bool(tau_q_k <= tau_dp_cal <= tau_q_k2 + 1e-12)
@@ -301,7 +304,8 @@ def run_experiment(args: ExperimentConfig) -> dict:
         "tau_q_k": tau_q_k,
         "tau_q_kplus2lambda": tau_q_k2,
         "certificate_width_tau": certificate_width_tau,
-        "observed_inflation_tau": observed_inflation_tau,
+        "observed_inflation_tau_grid": observed_inflation_tau_grid,
+        "observed_inflation_tau_exact": observed_inflation_tau_exact,
         "theorem_tau_ok": theorem_tau_ok,
         "theorem_idx_ok": theorem_idx_ok,
     })
@@ -310,7 +314,9 @@ def run_experiment(args: ExperimentConfig) -> dict:
         f"k={k} lam={lam:.2f} "
         f"idx_np={q_k_idx} idx_dp={crossing_index_dp} idx_hi={q_k2_idx} "
         f"tau_np={tau_q_k:.4f} tau_dp={tau_dp_cal:.4f} tau_hi={tau_q_k2:.4f} "
-        f"obs_gap={observed_inflation_tau:.4f} cert_gap={certificate_width_tau:.4f} "
+        f"obs_gap_grid={observed_inflation_tau_grid:.4f} "
+        f"obs_gap_exact={observed_inflation_tau_exact:.4f} "
+        f"cert_gap={certificate_width_tau:.4f} "
         f"tau_ok={theorem_tau_ok} idx_ok={theorem_idx_ok}"
     )
 
@@ -387,6 +393,11 @@ def run_experiment(args: ExperimentConfig) -> dict:
             f"_seed_{args.seed}.pt"
         )
 
+        print(f"[done] wrote {debug_path}")
+
+        print(f"\n[done] wrote {out_path}")
+
+    if args.save_artifacts:
         torch.save(
             {
                 "scores_cal_dp": scores_cal_dp.detach().cpu(),
@@ -402,16 +413,14 @@ def run_experiment(args: ExperimentConfig) -> dict:
                 "tau_q_k": tau_q_k,
                 "tau_q_kplus2lambda": tau_q_k2,
                 "certificate_width_tau": certificate_width_tau,
-                "observed_inflation_tau": observed_inflation_tau,
+                "observed_inflation_tau_grid": observed_inflation_tau_grid,
+                "observed_inflation_tau_exact": observed_inflation_tau_exact,
                 "theorem_tau_ok": theorem_tau_ok,
                 "theorem_idx_ok": theorem_idx_ok,
             },
             debug_path,
         )
 
-        print(f"[done] wrote {debug_path}")
-
-        print(f"\n[done] wrote {out_path}")
 
     if args.verbose:
         # Some APS debugging.
@@ -459,7 +468,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
         "empirical": {
             "overall_empirical_ok": bool(report["pass_fail"]["overall_empirical_ok"]),
             "coverage_empirical_ok": bool(report["pass_fail"]["coverage_empirical_ok"]),
-            "test_accuracy_dp": float(report["dp_training"]["test_accuracy"]),
+            "test_accuracy_dp": round(float(report["dp_training"]["test_accuracy"]), 4),
             "test_coverage_dpcal": float(report["dp_calibration"]["test_coverage_dp_cal"]),
             "avg_set_size_dpcal": float(report["dp_calibration"]["avg_set_size_dp_cal"]),
             "tau_dp_cal": float(report["dp_calibration"]["tau_dp_cal"]),
@@ -485,6 +494,7 @@ def main():
     ap.add_argument("--epochs_np", type=int, default=3)
     ap.add_argument("--epochs_dp", type=int, default=3)
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--save_artifacts", action="store_true")
     ap.add_argument("--dataset", type=str, default="cifar10",
                     choices=["mnist", "fashionmnist", "cifar10", "cifar100"])
 

@@ -1,4 +1,4 @@
-from compiler import Contract, CompileResult, RegionResult, SearchGrid
+from compiler import Contract, CompileResult, RegionResult, SearchGrid, summarize_frontier_points
 import json
 
 def build_contract_card(contract: Contract,
@@ -19,12 +19,20 @@ def build_contract_card(contract: Contract,
                 "dp_eps_cal": grid.dp_eps_cal,
                 "nominal_coverage": grid.nominal_coverage,
                 "seeds": grid.seeds,
+                "cal_size": grid.cal_size,
             },
         },
         "01_decision": {
             "00_status": result.status,
         },
         "02_evidence": {},
+    }
+
+    # Info on formal search.
+    card["01_decision"]["02_compiler"] = {
+        "compiler_mode": result.compiler_mode,
+        "frontier_rank_rule": result.frontier_rank_rule,
+        "grid_size_total": result.grid_size_total,
     }
 
     if regions is not None:
@@ -35,7 +43,10 @@ def build_contract_card(contract: Contract,
             "empirical_feasible_count": len(regions.empirical_feasible),
             "num_formal_evals": regions.num_formal_evals,
             "num_empirical_evals": regions.num_empirical_evals,
+            "grid_size_total": regions.grid_size_total,
         }
+        card["04_search_space"]["02_frontier_points"] = summarize_frontier_points(regions.formal_frontier)
+        card["04_search_space"]["03_checked_points"] = summarize_frontier_points(regions.empirical_checked)
 
     # FEASIBLE: chosen witness + full evidence.
     if result.status == "FEASIBLE" and result.config is not None:
@@ -53,6 +64,7 @@ def build_contract_card(contract: Contract,
         card["02_evidence"] = {
             "formal_guarantees": result.formal_result["formal"],
             "empirical_validation": result.empirical_result["empirical"],
+            "certificate": result.certificate_result["certificate"],
             "margins": {
                 "coverage_formal_margin": round(
                     result.formal_result["formal"]["coverage_lower_bound_formal"] - contract.coverage_target, 5
@@ -166,6 +178,11 @@ def print_contract_card(card: dict):
             print("\nFormal guarantees")
             print("-----------------")
             for k, v in ev["formal_guarantees"].items():
+                print(f"{k}: {fmt_value(v)}")
+        if "certificate" in ev:
+            print("\nCertificate")
+            print("-----------------")
+            for k, v in ev["certificate"].items():
                 print(f"{k}: {fmt_value(v)}")
         if "empirical_validation" in ev:
             print("\nEmpirical validation")

@@ -21,6 +21,7 @@ class SearchGrid:
     dp_eps_train: list[float]
     dp_eps_cal: list[float]
     nominal_coverage: list[float]
+    cal_size: list[int]
     seeds: list[int]
 
 
@@ -34,6 +35,7 @@ class RegionResult:
     best_formal_candidate: tuple[ExperimentConfig, dict] | None
     num_formal_evals: int
     num_empirical_evals: int
+    grid_size_total: int
 
 
 @dataclass
@@ -42,8 +44,12 @@ class CompileResult:
     config: Optional[ExperimentConfig]
     formal_result: Optional[dict]
     empirical_result: Optional[dict]
+    certificate_result: Optional[dict]
     num_formal_evals: int
     num_empirical_evals: int
+    compiler_mode: str
+    frontier_rank_rule: str
+    grid_size_total: int
 
 
 def make_base_config() -> ExperimentConfig:
@@ -65,7 +71,7 @@ def make_base_config() -> ExperimentConfig:
         num_bins=50,
         beta=1e-3,
         temperature=2.0,
-        label_smoothing=0.0,
+        label_smoothing=0.5,
         cal_size=2000,
         write_report=False,
     )
@@ -75,14 +81,16 @@ def candidate_configs(base: ExperimentConfig, contract: Contract, grid: SearchGr
     for teps in grid.dp_eps_train:
         for ceps in grid.dp_eps_cal:
             for nomcov in grid.nominal_coverage:
-                yield replace(
-                    base,
-                    dp_eps_train=teps,
-                    dp_eps_cal=ceps,
-                    nominal_coverage=nomcov,
-                    coverage_target=contract.coverage_target,
-                    beta=contract.beta,
-                )
+                for csize in grid.cal_size:
+                    yield replace(
+                        base,
+                        dp_eps_train=teps,
+                        dp_eps_cal=ceps,
+                        nominal_coverage=nomcov,
+                        coverage_target=contract.coverage_target,
+                        beta=contract.beta,
+                        cal_size=csize,
+                    )
 
 
 def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
@@ -91,12 +99,12 @@ def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
 
     # TODO: Not the best namings.
     privacy_training_ok = cfg.dp_eps_cal <= contract.max_dp_eps_cal
-    privacy_total_basic_composition_ok = cfg.dp_eps_train <= contract.max_dp_eps_train
+    privacy_cal_ok = cfg.dp_eps_train <= contract.max_dp_eps_train
 
     overall_formal_ok = (
         coverage_bound_formal_ok
         and privacy_training_ok
-        and privacy_total_basic_composition_ok
+        and privacy_cal_ok
     )
 
     return {
@@ -111,7 +119,7 @@ def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
             "overall_formal_ok": overall_formal_ok,
             "coverage_bound_formal_ok": coverage_bound_formal_ok,
             "privacy_training_ok": privacy_training_ok,
-            "privacy_total_basic_composition_ok": privacy_total_basic_composition_ok,
+            "privacy_cal_ok": privacy_cal_ok,
             "coverage_lower_bound_formal": coverage_lower_bound_formal,
         },
     }
@@ -189,6 +197,27 @@ def formal_frontier_candidates(formal_feasible: list[tuple[ExperimentConfig, dic
     )
     return frontier
 
+def certificate_width(result: dict) -> float:
+    return float(result["full_report"]["dp_calibration"]["certificate_width_tau"])
+
+def summarize_frontier_points(points: list[tuple[ExperimentConfig, dict]]) -> list[dict]:
+    out = []
+    for cfg, result in points:
+        formal = result.get("formal", {})
+        empirical = result.get("empirical", {})
+        out.append({
+            "config": {
+                "dp_eps_train": cfg.dp_eps_train,
+                "dp_eps_cal": cfg.dp_eps_cal,
+                "nominal_coverage": cfg.nominal_coverage,
+                "coverage_target": cfg.coverage_target,
+                "cal_size": cfg.cal_size,
+                "seed": cfg.seed,
+            },
+            "formal": formal,
+            "empirical": empirical,
+        })
+    return out
 
 def is_pathological(result: dict) -> bool:
     tau = result["empirical"]["tau_dp_cal"]
@@ -203,9 +232,11 @@ def objective(cfg: ExperimentConfig, result: dict):
     larger eps_cal, larger eps_train, then smaller total epsilon.
     """
     avg_size = result["empirical"]["avg_set_size_dpcal"]
+    cert_width = float(result["empirical"].get("certificate_width_tau", float("inf")))
     tau_penalty = 100.0 if is_pathological(result) else 0.0
     total_eps = cfg.dp_eps_train + cfg.dp_eps_cal
     return (
+        cert_width,
         avg_size + tau_penalty,
         cfg.nominal_coverage,
         -cfg.dp_eps_cal,
@@ -219,6 +250,10 @@ def summarize_seed_results(cfg: ExperimentConfig, seed_results: list[dict], form
     mean_size = sum(r["empirical"]["avg_set_size_dpcal"] for r in seed_results) / len(seed_results)
     mean_tau = sum(r["empirical"]["tau_dp_cal"] for r in seed_results) / len(seed_results)
     mean_acc = sum(r["empirical"]["test_accuracy_dp"] for r in seed_results) / len(seed_results)
+    mean_cert = sum(r["full_report"]["dp_calibration"]["certificate_width_tau"] for r in seed_results) / len(seed_results)
+    mean_obs_grid = sum(r["full_report"]["dp_calibration"]["observed_inflation_tau_grid"] for r in seed_results) / len(seed_results)
+    theorem_tau_rate = sum(float(r["full_report"]["dp_calibration"]["theorem_tau_ok"]) for r in seed_results) / len(seed_results)
+    theorem_idx_rate = sum(float(r["full_report"]["dp_calibration"]["theorem_idx_ok"]) for r in seed_results) / len(seed_results)
 
     return {
         "config": {
@@ -232,6 +267,12 @@ def summarize_seed_results(cfg: ExperimentConfig, seed_results: list[dict], form
             "temperature": cfg.temperature,
         },
         "formal": formal_result["formal"],
+        "certificate": {
+            "certificate_width_tau": mean_cert,
+            "observed_inflation_tau_grid": mean_obs_grid,
+            "theorem_tau_ok_rate": theorem_tau_rate,
+            "theorem_idx_ok_rate": theorem_idx_rate,
+        },
         "empirical": {
             "overall_empirical_ok": True,
             "coverage_empirical_ok": True,
@@ -330,6 +371,7 @@ def compute_feasible_regions(contract: Contract, grid: SearchGrid) -> RegionResu
             best_formal_candidate=best_failed_or_best,
             num_formal_evals=n_formal,
             num_empirical_evals=0,
+            grid_size_total=len(formal_checked)
         )
 
     frontier = formal_frontier_candidates(formal_feasible)
@@ -344,6 +386,7 @@ def compute_feasible_regions(contract: Contract, grid: SearchGrid) -> RegionResu
         best_formal_candidate=best_failed_or_best,
         num_formal_evals=n_formal,
         num_empirical_evals=n_emp,
+        grid_size_total=len(formal_checked)
     )
 
 def compile_contract(
@@ -362,6 +405,9 @@ def compile_contract(
             empirical_result=None,
             num_formal_evals=regions.num_formal_evals,
             num_empirical_evals=regions.num_empirical_evals,
+            compiler_mode="certificate_aware_frontier",
+            frontier_rank_rule="increasing_certificate_width_then_empirical_objective",
+            grid_size_total=len(regions.formal_checked),
         )
 
     best = choose_best(regions.empirical_feasible)
@@ -373,6 +419,9 @@ def compile_contract(
             empirical_result=None,
             num_formal_evals=regions.num_formal_evals,
             num_empirical_evals=regions.num_empirical_evals,
+            compiler_mode="certificate_aware_frontier",
+            frontier_rank_rule="increasing_certificate_width_then_empirical_objective",
+            grid_size_total=len(regions.formal_checked),
         )
 
     cfg, result = best
@@ -381,8 +430,12 @@ def compile_contract(
         config=cfg,
         formal_result={"formal": result["formal"]},
         empirical_result={"empirical": result["empirical"]},
+        certificate_result={"certificate": result["certificate"]},
         num_formal_evals=regions.num_formal_evals,
         num_empirical_evals=regions.num_empirical_evals,
+        compiler_mode="certificate_aware_frontier",
+        frontier_rank_rule="increasing_certificate_width_then_empirical_objective",
+        grid_size_total=len(regions.formal_checked),
     )
 
 def print_summary(result: CompileResult):
@@ -434,19 +487,21 @@ def main():
     out_dir = "contracts/"
     ensure_dir(out_dir)
 
+    # This is a nice grid.
     grid = SearchGrid(
-        dp_eps_train=[4.0, 8.0, 10.0],
-        dp_eps_cal=[4.0, 8.0, 10.0],
-        nominal_coverage=[0.7, 0.8, 0.9],
+        dp_eps_train=[4.0],
+        dp_eps_cal=[2.0, 4.0, 8.0],
+        nominal_coverage=[0.55, 0.65, 0.75],
+        cal_size=[1000, 2000, 4000],
         seeds=[0],
     )
 
-    for target in [0.7, 0.8, 0.9]:
+    for target in [0.7]:
         contract = Contract(
             coverage_target=target,
             beta=1e-3,
-            max_dp_eps_cal=8,
-            max_dp_eps_train=4,
+            max_dp_eps_cal=8.0,
+            max_dp_eps_train=4.0,
         )
 
         print(f"\n=== target={target} ===")
