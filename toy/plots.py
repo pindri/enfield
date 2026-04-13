@@ -689,7 +689,11 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_dir", type=str, default="data")
-    ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
+    # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
+    ap.add_argument("--analysis_out_dir", type=str, default="analysis/train_privacy_sensitivity_target070")
+    # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
+    # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
+    # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
     # ap.add_argument("--analysis_out_dir", type=str, default="analysis_smoothckeck")
     # ap.add_argument("--out_dir", type=str, default="toy_out")
     # ap.add_argument("--out_dir", type=str, default="toy_out_cifar10/toy_out_blockC")
@@ -709,8 +713,9 @@ def main() -> None:
     analysis_out_dir = args.analysis_out_dir
     data_dir = args.data_dir
 
-    df = load_reports(report_dir)
-    save_dataframe(df, f"{analysis_out_dir}/all_reports.csv")
+    # df = load_reports(report_dir)
+    # save_dataframe(df, f"{analysis_out_dir}/all_reports.csv")
+    df = pd.read_csv(f"{analysis_out_dir}/all_reports.csv")
 
     if args.verbose:
         print("Loaded", len(df), "reports")
@@ -788,37 +793,37 @@ def main() -> None:
         mask_formally_infeasible=False,
     )
 
-    plot_heatmap_choose(
-        df,
-        outpath=f"{analysis_out_dir}/heatmap_empirical_margin_to_target.png",
-        value_col="empirical_margin_to_target",
-        y_col="nominal_coverage",
-        x_col="coverage_target",
-        beta=1e-3,
-        cal_size=2000,
-        epsilon_train_target=4.0,
-        epsilon_cal=4.0,
-        aggregate="mean",
-        xlabel="Coverage target",
-        ylabel="Nominal coverage",
-        title="Empirical margin to target",
-    )
+    # plot_heatmap_choose(
+    #     df,
+    #     outpath=f"{analysis_out_dir}/heatmap_empirical_margin_to_target.png",
+    #     value_col="empirical_margin_to_target",
+    #     y_col="nominal_coverage",
+    #     x_col="coverage_target",
+    #     beta=1e-3,
+    #     cal_size=2000,
+    #     epsilon_train_target=4.0,
+    #     epsilon_cal=4.0,
+    #     aggregate="mean",
+    #     xlabel="Coverage target",
+    #     ylabel="Nominal coverage",
+    #     title="Empirical margin to target",
+    # )
 
-    plot_heatmap_choose(
-        df,
-        outpath=f"{analysis_out_dir}/heatmap_empirical_minus_nominal.png",
-        value_col="empirical_margin_to_nominal",
-        y_col="nominal_coverage",
-        x_col="epsilon_cal",
-        beta=1e-3,
-        cal_size=2000,
-        epsilon_train_target=4.0,
-        aggregate="mean",
-        xlabel=r"$\epsilon_{\mathrm{cal}}$",
-        ylabel="Nominal coverage",
-        title="Empirical coverage - nominal coverage",
-    )
-    print(f"Saved outputs to {analysis_out_dir}")
+    # plot_heatmap_choose(
+    #     df,
+    #     outpath=f"{analysis_out_dir}/heatmap_empirical_minus_nominal.png",
+    #     value_col="empirical_margin_to_nominal",
+    #     y_col="nominal_coverage",
+    #     x_col="epsilon_cal",
+    #     beta=1e-3,
+    #     cal_size=2000,
+    #     epsilon_train_target=4.0,
+    #     aggregate="mean",
+    #     xlabel=r"$\epsilon_{\mathrm{cal}}$",
+    #     ylabel="Nominal coverage",
+    #     title="Empirical coverage - nominal coverage",
+    # )
+    # print(f"Saved outputs to {analysis_out_dir}")
 
     # NEW PLOTS.
     plot_inflation_vs_certificate(
@@ -845,6 +850,99 @@ def main() -> None:
         df,
         f"{analysis_out_dir}/theorem_summary.csv",
     )
+
+    # Three pictures together.
+
+    # Load your main sweep
+    df = pd.read_csv("analysis/main_mechanism_target070/all_reports.csv")
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+
+    # -----------------------------
+    # Plot 1: certificate width vs epsilon_cal
+    # fixed nominal_coverage = 0.75
+    # one curve per cal_size
+    # -----------------------------
+    ax = axes[0]
+    dff = df[np.isclose(df["nominal_coverage"], 0.75)].copy()
+
+    for cal_size in sorted(dff["cal_size"].unique()):
+        g = dff[dff["cal_size"] == cal_size].copy()
+        gplot = (
+            g.groupby("epsilon_cal", as_index=False)["certificate_width_tau"]
+            .mean()
+            .sort_values("epsilon_cal")
+        )
+        ax.plot(
+            gplot["epsilon_cal"],
+            gplot["certificate_width_tau"],
+            marker="o",
+            label=f"cal={cal_size}",
+        )
+
+    ax.set_xlabel(r"$\epsilon_{\mathrm{cal}}$")
+    ax.set_ylabel("Certificate width")
+    ax.set_title("Certificate width vs calibration privacy")
+    ax.legend()
+
+    # -----------------------------
+    # Plot 2: set size vs epsilon_cal
+    # one curve per nominal_coverage
+    # -----------------------------
+    ax = axes[1]
+    dff = df.copy()
+
+    for nomcov in sorted(dff["nominal_coverage"].unique()):
+        g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
+        gplot = (
+            g.groupby("epsilon_cal", as_index=False)["avg_set_size_dp_cal"]
+            .mean()
+            .sort_values("epsilon_cal")
+        )
+        ax.plot(
+            gplot["epsilon_cal"],
+            gplot["avg_set_size_dp_cal"],
+            marker="o",
+            label=f"nom={nomcov}",
+        )
+
+    ax.set_xlabel(r"$\epsilon_{\mathrm{cal}}$")
+    ax.set_ylabel("Average prediction set size")
+    ax.set_title("Set size vs calibration privacy")
+    ax.legend()
+
+    # -----------------------------
+    # Plot 3: observed inflation vs certificate width
+    # fixed cal_size=2000, nominal_coverage=0.75
+    # colored by epsilon_cal
+    # -----------------------------
+    ax = axes[2]
+    dff = df[
+        (df["cal_size"] == 2000) &
+        (np.isclose(df["nominal_coverage"], 0.75))
+    ].copy()
+
+    for eps_cal in sorted(dff["epsilon_cal"].unique()):
+        g = dff[np.isclose(dff["epsilon_cal"], eps_cal)].copy()
+        ax.scatter(
+            g["certificate_width_tau"],
+            g["observed_inflation_tau_grid"],
+            label=f"eps={eps_cal}",
+        )
+
+    hi = max(
+        float(dff["certificate_width_tau"].max()),
+        float(dff["observed_inflation_tau_grid"].max()),
+    )
+    ax.plot([0, hi], [0, hi], linestyle="--")
+    ax.set_xlabel("Certificate width")
+    ax.set_ylabel("Observed inflation")
+    ax.set_title("Observed inflation vs certificate")
+    ax.legend()
+
+    plt.tight_layout()
+    plt.savefig("analysis/main/three_panel_main_results.png", dpi=200, bbox_inches="tight")
+    plt.show()
 
 
 if __name__ == "__main__":
