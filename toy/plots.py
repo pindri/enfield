@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from matplotlib.colors import TwoSlopeNorm
 
-from toy.utils import save_dataframe
+from utils import save_dataframe
 from utils import ensure_dir, make_reproducible, load_reports
 
 
@@ -29,6 +29,147 @@ def filter_df(
         dff = dff[dff["cal_size"] == cal_size]
     return dff
 
+def plot_certificate_vs_epsilon_by_cal_size(
+    df: pd.DataFrame,
+    outpath: str | Path,
+    fixed_nominal_coverage: float | None = None,
+    aggregate: str = "mean",
+) -> None:
+    dff = df.copy()
+
+    if fixed_nominal_coverage is not None:
+        dff = dff[np.isclose(dff["nominal_coverage"], fixed_nominal_coverage)].copy()
+
+    if dff.empty:
+        raise ValueError("No rows remain after filtering for plot_certificate_vs_epsilon_by_cal_size")
+
+    plt.figure(figsize=(7, 5))
+
+    for cal_size in sorted(dff["cal_size"].unique()):
+        g = dff[dff["cal_size"] == cal_size].copy()
+        grouped = g.groupby("epsilon_cal", as_index=False)["certificate_width_tau"]
+
+        if aggregate == "mean":
+            gplot = grouped.mean()
+        elif aggregate == "median":
+            gplot = grouped.median()
+        else:
+            raise ValueError("aggregate must be 'mean' or 'median'")
+
+        gplot = gplot.sort_values("epsilon_cal")
+
+        plt.plot(
+            gplot["epsilon_cal"],
+            gplot["certificate_width_tau"],
+            marker="o",
+            label=f"cal_size={cal_size}",
+        )
+
+    plt.xlabel(r"$\epsilon_{\mathrm{cal}}$")
+    plt.ylabel("Certificate width")
+    plt.title("Certificate width vs calibration privacy")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+
+def save_theorem_summary_table(
+    df: pd.DataFrame,
+    outpath: str | Path,
+) -> None:
+    summary = (
+        df.groupby(["epsilon_cal", "nominal_coverage", "cal_size"], as_index=False)
+        .agg(
+            certificate_width_tau_mean=("certificate_width_tau", "mean"),
+            observed_inflation_tau_grid_mean=("observed_inflation_tau_grid", "mean"),
+            avg_set_size_dp_cal_mean=("avg_set_size_dp_cal", "mean"),
+            test_coverage_dp_cal_mean=("test_coverage_dp_cal", "mean"),
+            theorem_tau_ok_rate=("theorem_tau_ok", "mean"),
+            theorem_idx_ok_rate=("theorem_idx_ok", "mean"),
+            inflation_to_certificate_ratio_mean=("inflation_to_certificate_ratio", "mean"),
+        )
+    )
+    summary.to_csv(outpath, index=False)
+
+def plot_method_tradeoff( df: pd.DataFrame, outpath: str | Path, fixed_cal_size: int | None = None,
+                          fixed_nominal_coverage: float | None = None, aggregate: str = "mean", ) -> None:
+    dff = df.copy()
+
+    if fixed_cal_size is not None:
+        dff = dff[dff["cal_size"] == fixed_cal_size].copy()
+    if fixed_nominal_coverage is not None:
+        dff = dff[np.isclose(dff["nominal_coverage"], fixed_nominal_coverage)].copy()
+
+    if dff.empty:
+        raise ValueError("No rows remain after filtering for plot_method_tradeoff")
+
+    if aggregate == "mean":
+        agg_fn = "mean"
+    elif aggregate == "median":
+        agg_fn = "median"
+    else:
+        raise ValueError("aggregate must be 'mean' or 'median'")
+
+    np_cov = getattr(dff["np_coverage"], agg_fn)()
+    np_size = getattr(dff["np_avg_set_size"], agg_fn)()
+
+    dp_np_cov = getattr(dff["test_coverage_nonprivate_cal"], agg_fn)()
+    dp_np_size = getattr(dff["dp_avg_set_size_nonprivate_cal"], agg_fn)()
+
+    dp_dp_cov = getattr(dff["test_coverage_dp_cal"], agg_fn)()
+    dp_dp_size = getattr(dff["avg_set_size_dp_cal"], agg_fn)()
+
+    plt.figure(figsize=(6, 5))
+    plt.scatter([np_size], [np_cov], s=80, label="NP model + NP cal")
+    plt.scatter([dp_np_size], [dp_np_cov], s=80, label="DP model + NP cal")
+    plt.scatter([dp_dp_size], [dp_dp_cov], s=80, label="DP model + DP cal")
+
+    plt.xlabel("Average prediction set size")
+    plt.ylabel("Empirical coverage")
+    plt.title("Coverage vs set size by method")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+
+def plot_inflation_vs_certificate(
+    df: pd.DataFrame,
+    outpath: str | Path,
+    fixed_cal_size: int | None = None,
+    fixed_nominal_coverage: float | None = None,
+) -> None:
+    dff = df.copy()
+
+    if fixed_cal_size is not None:
+        dff = dff[dff["cal_size"] == fixed_cal_size].copy()
+    if fixed_nominal_coverage is not None:
+        dff = dff[np.isclose(dff["nominal_coverage"], fixed_nominal_coverage)].copy()
+
+    if dff.empty:
+        raise ValueError("No rows remain after filtering for plot_inflation_vs_certificate")
+
+    plt.figure(figsize=(6, 5))
+
+    for eps_cal in sorted(dff["epsilon_cal"].unique()):
+        g = dff[np.isclose(dff["epsilon_cal"], eps_cal)]
+        plt.scatter(
+            g["certificate_width_tau"],
+            g["observed_inflation_tau_grid"],
+            label=f"eps_cal={eps_cal}",
+        )
+
+    hi = max(
+        float(dff["certificate_width_tau"].max()),
+        float(dff["observed_inflation_tau_grid"].max()),
+    )
+    plt.plot([0, hi], [0, hi], linestyle="--")
+    plt.xlabel("Certificate width")
+    plt.ylabel("Observed inflation (grid)")
+    plt.title("Observed inflation vs certificate width")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
 
 def plot_coverage_vs_formal_bound(df: pd.DataFrame, outpath: str | Path) -> None:
     """
@@ -548,11 +689,11 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_dir", type=str, default="data")
-    ap.add_argument("--analysis_out_dir", type=str, default="analysis/blockC")
+    ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
     # ap.add_argument("--analysis_out_dir", type=str, default="analysis_smoothckeck")
     # ap.add_argument("--out_dir", type=str, default="toy_out")
     # ap.add_argument("--out_dir", type=str, default="toy_out_cifar10/toy_out_blockC")
-    ap.add_argument("--out_dir", type=str, default="toy_out_blockC")
+    ap.add_argument("--out_dir", type=str, default="toy_out_main")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
@@ -678,6 +819,32 @@ def main() -> None:
         title="Empirical coverage - nominal coverage",
     )
     print(f"Saved outputs to {analysis_out_dir}")
+
+    # NEW PLOTS.
+    plot_inflation_vs_certificate(
+        df,
+        f"{analysis_out_dir}/inflation_vs_certificate_cal2000_nom075.png",
+        fixed_cal_size=2000,
+        fixed_nominal_coverage=0.75,
+    )
+
+    plot_certificate_vs_epsilon_by_cal_size(
+        df,
+        f"{analysis_out_dir}/certificate_vs_epsilon_by_cal_size_nom075.png",
+        fixed_nominal_coverage=0.75,
+    )
+
+    plot_method_tradeoff(
+        df,
+        f"{analysis_out_dir}/method_tradeoff_cal2000_nom075.png",
+        fixed_cal_size=2000,
+        fixed_nominal_coverage=0.75,
+    )
+
+    save_theorem_summary_table(
+        df,
+        f"{analysis_out_dir}/theorem_summary.csv",
+    )
 
 
 if __name__ == "__main__":

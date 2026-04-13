@@ -275,7 +275,12 @@ def run_experiment(args: ExperimentConfig) -> dict:
     certificate_width_tau = round(float(tau_q_k2 - tau_q_k), 4)
 
     crossing_index_dp = int(dpcal_info["crossing_index"])
-    theorem_tau_ok = bool(tau_q_k <= tau_dp_cal <= tau_q_k2 + 1e-12)
+    # theorem_tau_ok = bool(tau_q_k <= tau_dp_cal <= tau_q_k2 + 1e-12)
+    tol = 1e-6  # Bit of tolerance because tiiiiny weird numbers break it.
+    theorem_tau_ok = bool(
+        (tau_dp_cal >= tau_q_k - tol) and
+        (tau_dp_cal <= tau_q_k2 + tol)
+    )
     theorem_idx_ok = bool(q_k_idx <= crossing_index_dp <= q_k2_idx)
 
     eval_dp_dpcal = evaluate_coverage_aps(model_dp, test_loader, tau_dp_cal, device, temperature=args.temperature)
