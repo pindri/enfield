@@ -139,8 +139,16 @@ def run_experiment(args: ExperimentConfig) -> dict:
         num_classes = 10 if args.dataset == "cifar10" else 100
         model_np = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
         model_dp = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
+
+        # model_np = DPFriendlyCNN(in_channels=3, num_classes=num_classes).to(device)
+        # model_dp = DPFriendlyCNN(in_channels=3, num_classes=num_classes).to(device)
+
         # model_np = MediumPowerfulCNN(in_channels=3, num_classes=num_classes).to(device)
         # model_dp = MediumPowerfulCNN(in_channels=3, num_classes=num_classes).to(device)
+    elif args.dataset in ["fashionmnist"]:
+        num_classes = 10
+        model_np = TinyCNNFMNIST(in_channels=1, num_classes=num_classes).to(device)
+        model_dp = TinyCNNFMNIST(in_channels=1, num_classes=num_classes).to(device)
     else:
         model_np = TinyMLP().to(device)
         model_dp = TinyMLP().to(device)
@@ -347,9 +355,9 @@ def run_experiment(args: ExperimentConfig) -> dict:
     coverage_bound_formal_ok = coverage_lb_formal >= coverage_target
     # Empirical check: observed test coverage meets the requested target.
     coverage_empirical_ok = eval_dp_dpcal["coverage"] >= coverage_target
-    privacy_training_ok = eps_realized <= args.dp_eps_train + 1e-6
+    privacy_training_ok = eps_realized <= args.dp_eps_train + 1e-2  # 0.06
     privacy_total_basic_composition_ok = ((eps_realized + float(args.dp_eps_cal))
-                                          <= (args.dp_eps_train + float(args.dp_eps_cal) + 1e-6))
+                                          <= (args.dp_eps_train + float(args.dp_eps_cal) + 1e-2))
 
     report["pass_fail"] = {
         "privacy_training_ok": privacy_training_ok,

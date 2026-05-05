@@ -182,12 +182,12 @@ def main() -> None:
     ap.add_argument(
         "--csv",
         type=str,
-        default="analysis/main_mechanism_target070/all_reports.csv",
+        default="analysis/fmnist_main_mechanism_target070/all_reports.csv",
     )
     ap.add_argument(
         "--out",
         type=str,
-        default="analysis/main/three_panel_main_results.png",
+        default="analysis/fmnist_main_mechanism_target070/three_panel_main_results.png",
     )
     ap.add_argument(
         "--aggregate",
