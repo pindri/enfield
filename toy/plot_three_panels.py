@@ -38,6 +38,17 @@ def make_three_panel_figure(
     outpath: str | Path,
     aggregate: str = "mean",
 ) -> None:
+
+    plt.rcParams.update({
+        "font.size": 13,
+        "axes.titlesize": 14,
+        "axes.labelsize": 14,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "legend.fontsize": 11,
+    })
+
+
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
 
     # -----------------------------
