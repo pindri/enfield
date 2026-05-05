@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def summarize_curve(
@@ -48,6 +49,10 @@ def make_three_panel_figure(
         "legend.fontsize": 11,
     })
 
+    palette1 = sns.color_palette("colorblind", n_colors=len(sorted(df["cal_size"].unique())))
+    palette2 = sns.color_palette("colorblind", n_colors=len(sorted(df["nominal_coverage"].unique())))
+    palette3 = sns.color_palette("colorblind", n_colors=len(sorted(df["epsilon_cal"].unique())))
+
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
 
@@ -62,7 +67,8 @@ def make_three_panel_figure(
     if dff.empty:
         raise ValueError("No rows remain for panel 1 after filtering nominal_coverage=0.75")
 
-    for cal_size in sorted(dff["cal_size"].unique()):
+    # for cal_size in sorted(dff["cal_size"].unique()):
+    for color, cal_size in zip(palette1, sorted(dff["cal_size"].unique())):
         g = dff[dff["cal_size"] == cal_size].copy()
         gplot = summarize_curve(
             g,
@@ -75,12 +81,14 @@ def make_three_panel_figure(
             gplot["epsilon_cal"],
             gplot["center"],
             marker="o",
+            color=color,
             label=f"cal={cal_size}",
         )
         ax.fill_between(
             gplot["epsilon_cal"],
             gplot["lower_1std"],
             gplot["upper_1std"],
+            color=color,
             alpha=0.2,
         )
 
@@ -99,7 +107,8 @@ def make_three_panel_figure(
     if dff.empty:
         raise ValueError("No rows remain for panel 2")
 
-    for nomcov in sorted(dff["nominal_coverage"].unique()):
+    # for nomcov in sorted(dff["nominal_coverage"].unique()):
+    for color, nomcov in zip(palette2, sorted(dff["nominal_coverage"].unique())):
         g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
         gplot = summarize_curve(
             g,
@@ -112,12 +121,14 @@ def make_three_panel_figure(
             gplot["epsilon_cal"],
             gplot["center"],
             marker="o",
+            color=color,
             label=f"nom={nomcov}",
         )
         ax.fill_between(
             gplot["epsilon_cal"],
             gplot["lower_1std"],
             gplot["upper_1std"],
+            color=color,
             alpha=0.2,
         )
 
@@ -139,12 +150,13 @@ def make_three_panel_figure(
 
     if dff.empty:
         raise ValueError("No rows remain for panel 3 after filtering cal_size=2000 and nominal_coverage=0.75")
-
-    for eps_cal in sorted(dff["epsilon_cal"].unique()):
+    for color, eps_cal in zip(palette3, sorted(dff["epsilon_cal"].unique())):
+    # for eps_cal in sorted(dff["epsilon_cal"].unique()):
         g = dff[np.isclose(dff["epsilon_cal"], eps_cal)].copy()
         ax.scatter(
             g["certificate_width_tau"],
             g["observed_inflation_tau_grid"],
+            color=color,
             label=f"eps={eps_cal}",
         )
 
