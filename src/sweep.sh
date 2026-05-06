@@ -36,7 +36,7 @@ DP_EPS_TRAIN=4.0
 #    for nomcov in 0.55 0.65 0.75; do
 #      for ceps in 2.0 4.0 8.0; do
 #        echo "[A] seed=$seed cal_size=$cal_size nomcov=$nomcov ceps=$ceps"
-#        python toy.py \
+#        python src.py \
 #          --dataset "$DATASET" \
 #          --seed "$seed" \
 #          --epochs_np "$EPOCHS_NP" \
