@@ -52,6 +52,14 @@ def make_three_panel_figure(
     palette1 = sns.color_palette("colorblind", n_colors=len(sorted(df["cal_size"].unique())))
     palette2 = sns.color_palette("colorblind", n_colors=len(sorted(df["nominal_coverage"].unique())))
     palette3 = sns.color_palette("colorblind", n_colors=len(sorted(df["epsilon_cal"].unique())))
+    # palette1 = sns.color_palette("Blues", n_colors=4)[1:]
+    # palette2 = sns.color_palette("Oranges", n_colors=4)[1:]
+    # palette3 = sns.color_palette("Purples", n_colors=4)[1:]
+    palette1 = sns.color_palette("Blues", n_colors=8)[3::2][:3]
+    palette2 = sns.color_palette("Oranges", n_colors=8)[3::2][:3]
+    palette3 = sns.color_palette("Purples", n_colors=8)[3::2][:3]
+
+    markers = ["o", "s", "^"]
 
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
@@ -68,7 +76,7 @@ def make_three_panel_figure(
         raise ValueError("No rows remain for panel 1 after filtering nominal_coverage=0.75")
 
     # for cal_size in sorted(dff["cal_size"].unique()):
-    for color, cal_size in zip(palette1, sorted(dff["cal_size"].unique())):
+    for color, marker, cal_size in zip(palette1, markers, sorted(dff["cal_size"].unique())):
         g = dff[dff["cal_size"] == cal_size].copy()
         gplot = summarize_curve(
             g,
@@ -80,7 +88,8 @@ def make_three_panel_figure(
         ax.plot(
             gplot["epsilon_cal"],
             gplot["center"],
-            marker="o",
+            # marker="o",
+            marker=marker,
             color=color,
             label=f"cal={cal_size}",
         )
@@ -108,7 +117,7 @@ def make_three_panel_figure(
         raise ValueError("No rows remain for panel 2")
 
     # for nomcov in sorted(dff["nominal_coverage"].unique()):
-    for color, nomcov in zip(palette2, sorted(dff["nominal_coverage"].unique())):
+    for color, marker, nomcov in zip(palette2, markers, sorted(dff["nominal_coverage"].unique())):
         g = dff[np.isclose(dff["nominal_coverage"], nomcov)].copy()
         gplot = summarize_curve(
             g,
@@ -120,7 +129,8 @@ def make_three_panel_figure(
         ax.plot(
             gplot["epsilon_cal"],
             gplot["center"],
-            marker="o",
+            # marker="o",
+            marker=marker,
             color=color,
             label=f"nom={nomcov}",
         )
@@ -150,12 +160,13 @@ def make_three_panel_figure(
 
     if dff.empty:
         raise ValueError("No rows remain for panel 3 after filtering cal_size=2000 and nominal_coverage=0.75")
-    for color, eps_cal in zip(palette3, sorted(dff["epsilon_cal"].unique())):
+    for color, marker, eps_cal in zip(palette3, markers, sorted(dff["epsilon_cal"].unique())):
     # for eps_cal in sorted(dff["epsilon_cal"].unique()):
         g = dff[np.isclose(dff["epsilon_cal"], eps_cal)].copy()
         ax.scatter(
             g["certificate_width_tau"],
             g["observed_inflation_tau_grid"],
+            marker=marker,
             color=color,
             label=f"eps={eps_cal}",
         )
@@ -182,12 +193,14 @@ def main() -> None:
     ap.add_argument(
         "--csv",
         type=str,
-        default="analysis/fmnist_main_mechanism_target070/all_reports.csv",
+        # default="analysis/fmnist_main_mechanism_target070/all_reports.csv",
+        default="analysis/main_mechanism_target070/all_reports.csv",
     )
     ap.add_argument(
         "--out",
         type=str,
-        default="analysis/fmnist_main_mechanism_target070/three_panel_main_results.png",
+        # default="analysis/fmnist_main_mechanism_target070/three_panel_main_results.png",
+        default="analysis/main/three_panel_main_results.png",
     )
     ap.add_argument(
         "--aggregate",
