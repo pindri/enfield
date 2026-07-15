@@ -23,7 +23,7 @@ def main() -> None:
 
     root = Path(args.analysis_root)
 
-    # Input folders
+    # Input folders.
     sectionA_dir = root / "main_mechanism_target070"
     req06_dir = root / "requirements_target06"
     req07_dir = root / "requirements_target07"
@@ -31,11 +31,11 @@ def main() -> None:
     train_priv_dir = root / "train_privacy_sensitivity_target070"
     saturation_dir = root / "saturation_check_target07"
 
-    # Output folders
+    # Output folders.
     out_main = root / "main"
     out_main.mkdir(parents=True, exist_ok=True)
 
-    # Load CSVs
+    # Load CSVs.
     dfA = pd.read_csv(sectionA_dir / "all_reports.csv")
     dfR06 = pd.read_csv(req06_dir / "all_reports.csv")
     dfR07 = pd.read_csv(req07_dir / "all_reports.csv")
@@ -44,7 +44,7 @@ def main() -> None:
     dfD = pd.read_csv(saturation_dir / "all_reports.csv")
 
     # -----------------------------
-    # Section A: main mechanism sweep
+    # Section A: main mechanism sweep.
     # -----------------------------
     plot_set_size_vs_epsilon_cal_by_nominal(
         dfA,
@@ -87,7 +87,7 @@ def main() -> None:
     )
 
     # -----------------------------
-    # Requirements sweeps
+    # Requirements sweeps.
     # -----------------------------
     plot_contract_feasibility_map(
         dfR06,

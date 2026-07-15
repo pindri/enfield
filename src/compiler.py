@@ -405,6 +405,7 @@ def compile_contract(
             empirical_result=None,
             num_formal_evals=regions.num_formal_evals,
             num_empirical_evals=regions.num_empirical_evals,
+            certificate_result={"certificate": None},
             compiler_mode="certificate_aware_frontier",
             frontier_rank_rule="increasing_certificate_width_then_empirical_objective",
             grid_size_total=len(regions.formal_checked),
@@ -496,7 +497,7 @@ def main():
         seeds=[0],
     )
 
-    for target in [0.7]:
+    for target in [0.9]:
         contract = Contract(
             coverage_target=target,
             beta=1e-3,

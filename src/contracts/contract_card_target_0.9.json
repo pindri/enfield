@@ -1,0 +1,75 @@
+{
+  "00_request": {
+    "beta": 0.001,
+    "coverage_target": 0.9,
+    "max_dp_eps_cal": 8.0,
+    "max_dp_eps_train": 4.0,
+    "objective": "Among configurations that satisfy the contract, pick the least conservative one."
+  },
+  "01_decision": {
+    "00_status": "FORMALLY_INFEASIBLE",
+    "02_compiler": {
+      "compiler_mode": "certificate_aware_frontier",
+      "frontier_rank_rule": "increasing_certificate_width_then_empirical_objective",
+      "grid_size_total": 27
+    }
+  },
+  "02_evidence": {
+    "00_best_formal_attempt": {
+      "config": {
+        "coverage_target": 0.9,
+        "dp_eps_cal": 2.0,
+        "dp_eps_train": 4.0,
+        "nominal_coverage": 0.75
+      },
+      "formal_guarantees": {
+        "coverage_bound_formal_ok": false,
+        "coverage_lower_bound_formal": 0.749,
+        "overall_formal_ok": false,
+        "privacy_cal_ok": true,
+        "privacy_training_ok": true
+      },
+      "margins": {
+        "calibration_privacy_formal_margin": 6.0,
+        "coverage_formal_margin": -0.151,
+        "training_privacy_formal_margin": 0.0
+      }
+    }
+  },
+  "04_search_space": {
+    "00_search_summary": {
+      "empirical_checked_count": 0,
+      "empirical_feasible_count": 0,
+      "formal_feasible_count": 0,
+      "formal_frontier_count": 0,
+      "grid_size_total": 27,
+      "num_empirical_evals": 0,
+      "num_formal_evals": 27
+    },
+    "01_grid": {
+      "cal_size": [
+        1000,
+        2000,
+        4000
+      ],
+      "dp_eps_cal": [
+        2.0,
+        4.0,
+        8.0
+      ],
+      "dp_eps_train": [
+        4.0
+      ],
+      "nominal_coverage": [
+        0.55,
+        0.65,
+        0.75
+      ],
+      "seeds": [
+        0
+      ]
+    },
+    "02_frontier_points": [],
+    "03_checked_points": []
+  }
+}

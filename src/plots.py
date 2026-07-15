@@ -73,6 +73,8 @@ def plot_certificate_vs_epsilon_by_cal_size(
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+    print(f"Saved certificate vs epsilon plots to {outpath}")
+
 def save_theorem_summary_table(
     df: pd.DataFrame,
     outpath: str | Path,
@@ -90,6 +92,8 @@ def save_theorem_summary_table(
         )
     )
     summary.to_csv(outpath, index=False)
+
+    print(f"Saved summary table to {outpath}")
 
 def plot_method_tradeoff( df: pd.DataFrame, outpath: str | Path, fixed_cal_size: int | None = None,
                           fixed_nominal_coverage: float | None = None, aggregate: str = "mean", ) -> None:
@@ -132,6 +136,8 @@ def plot_method_tradeoff( df: pd.DataFrame, outpath: str | Path, fixed_cal_size:
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+    print(f"Saved tradeoff plot to {outpath}")
+
 def plot_inflation_vs_certificate(
     df: pd.DataFrame,
     outpath: str | Path,
@@ -171,6 +177,8 @@ def plot_inflation_vs_certificate(
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+    print(f"Saved inflation plot to {outpath}")
+
 def plot_coverage_vs_formal_bound(df: pd.DataFrame, outpath: str | Path) -> None:
     """
     Scatter: x = formal lower bound, y = empirical coverage under DP calibration.
@@ -199,6 +207,8 @@ def plot_coverage_vs_formal_bound(df: pd.DataFrame, outpath: str | Path) -> None
     else:
         plt.show()
     plt.close()
+
+    print(f"Saved formal lower bound plot to {outpath}")
 
 
 def plot_contract_heatmap(
@@ -267,6 +277,8 @@ def plot_contract_heatmap(
     plt.tight_layout()
     plt.savefig(outpath, dpi=200)
     plt.close()
+
+    print(f"Saved heatmap plot to {outpath}")
 
 
 def plot_heatmap_choose(
@@ -395,6 +407,8 @@ def plot_coverage_vs_epsilon_cal(
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+    print(f"Saved epsilon plot to {outpath}")
+
 
 def plot_set_size_vs_epsilon_cal_by_nominal(
     df: pd.DataFrame,
@@ -451,6 +465,8 @@ def plot_set_size_vs_epsilon_cal_by_nominal(
     plt.tight_layout()
     plt.savefig(outpath, dpi=200)
     plt.close()
+
+    print(f"Saved epsilon plot to {outpath}")
 
 
 def plot_coverage_vs_epsilon_by_nominal(
@@ -535,6 +551,9 @@ def plot_coverage_vs_epsilon_by_nominal(
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+    print(f"Saved coverage plot to {outpath}")
+
+
 def plot_set_size_vs_epsilon_cal(
     df: pd.DataFrame,
     outpath: str | Path,
@@ -568,6 +587,8 @@ def plot_set_size_vs_epsilon_cal(
     plt.tight_layout()
     plt.savefig(outpath, dpi=200)
     plt.close()
+
+    print(f"Saved set size plot to {outpath}")
 
 
 def plot_accuracy_vs_epsilon_train(
@@ -604,6 +625,8 @@ def plot_accuracy_vs_epsilon_train(
     plt.tight_layout()
     plt.savefig(outpath, dpi=200)
     plt.close()
+
+    print(f"Saved accuracy plot to {outpath}")
 
 
 def plot_contract_feasibility_map(
@@ -683,6 +706,8 @@ def plot_contract_feasibility_map(
     plt.savefig(outpath, dpi=200)
     plt.close()
 
+    print(f"Saved accuracy plot to {outpath}")
+
 
 
 def main() -> None:
@@ -692,9 +717,6 @@ def main() -> None:
     # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
     ap.add_argument("--analysis_out_dir", type=str, default="analysis/train_privacy_sensitivity_target070")
     # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
-    # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
-    # ap.add_argument("--analysis_out_dir", type=str, default="analysis/main")
-    # ap.add_argument("--analysis_out_dir", type=str, default="analysis_smoothckeck")
     # ap.add_argument("--out_dir", type=str, default="toy_out")
     # ap.add_argument("--out_dir", type=str, default="toy_out_cifar10/toy_out_blockC")
     ap.add_argument("--out_dir", type=str, default="toy_out_main")
@@ -943,6 +965,7 @@ def main() -> None:
     plt.tight_layout()
     plt.savefig("analysis/main/three_panel_main_results.png", dpi=200, bbox_inches="tight")
     plt.show()
+
 
 
 if __name__ == "__main__":

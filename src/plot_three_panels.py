@@ -91,7 +91,7 @@ def make_three_panel_figure(
             # marker="o",
             marker=marker,
             color=color,
-            label=f"cal={cal_size}",
+            label=f"cal size={cal_size}",
         )
         ax.fill_between(
             gplot["epsilon_cal"],
@@ -132,7 +132,8 @@ def make_three_panel_figure(
             # marker="o",
             marker=marker,
             color=color,
-            label=f"nom={nomcov}",
+            # label=f"nominal coverage={nomcov}",
+            label=fr"$\gamma={nomcov}$"
         )
         ax.fill_between(
             gplot["epsilon_cal"],
@@ -168,7 +169,9 @@ def make_three_panel_figure(
             g["observed_inflation_tau_grid"],
             marker=marker,
             color=color,
-            label=f"eps={eps_cal}",
+            # label=fr"$\epsilon_\math={eps_cal}",
+            # label = r"$\epsilon_{\mathrm{cal}}$={eps_cal}"
+            label=fr"$\epsilon_\mathrm{{cal}}={eps_cal:.0f}$"
         )
 
     hi = max(
@@ -193,14 +196,14 @@ def main() -> None:
     ap.add_argument(
         "--csv",
         type=str,
-        # default="analysis/fmnist_main_mechanism_target070/all_reports.csv",
-        default="analysis/main_mechanism_target070/all_reports.csv",
+        default="analysis/fmnist_main_mechanism_target070/all_reports.csv",
+        # default="analysis/main_mechanism_target070/all_reports.csv",
     )
     ap.add_argument(
         "--out",
         type=str,
-        # default="analysis/fmnist_main_mechanism_target070/three_panel_main_results.png",
-        default="analysis/main/three_panel_main_results.png",
+        default="analysis/fmnist_main_mechanism_target070/three_panel_main_results.pdf",
+        # default="analysis/main/three_panel_main_results.png",
     )
     ap.add_argument(
         "--aggregate",

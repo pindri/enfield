@@ -9,7 +9,7 @@
   --dp_eps_cal 8.0 \
   --cal_size 2000 \
   --nominal_coverage 0.75 \
-  --coverage_target 0.7 \
+  --coverage_target 0.95 \
   --beta 1e-3 \
   --batch_size 128 \
   --label_smoothing 0.5 \
