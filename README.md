@@ -47,7 +47,7 @@ python plot_three_panels.py \
   --out analysis/fmnist_main_mechanism_target070/three_panel_main_results.pdf
 python plot_three_panels.py \
   --csv analysis/main_mechanism_target070/all_reports.csv \
-  --out analysis/analysis/main/three_panel_main_results.pdf
+  --out analysis/main/three_panel_main_results.pdf
 ```
 
 ## Contract compiler
