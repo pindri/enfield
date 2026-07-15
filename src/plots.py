@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 
 from matplotlib.colors import TwoSlopeNorm
 
-from utils import save_dataframe
-from utils import ensure_dir, make_reproducible, load_reports
+from utils import save_dataframe, ensure_dir
 
 
 def filter_df(

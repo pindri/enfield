@@ -1,9 +1,13 @@
-name: enfield
+name: comply
 channels:
   - defaults
 dependencies:
   - python=3.10
   - pip
   - pip:
-      - opacus==1.5.4
+      - torch==2.7.0
       - torchvision==0.22.1
+      - opacus==1.5.4
+      - matplotlib==3.10.8
+      - numpy==2.4.3
+      - pandas==3.0.1

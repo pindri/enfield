@@ -5,6 +5,7 @@ mkdir -p logs
 
 DATASET="cifar100"
 OUTDIR="toy_out_cifar100_diagnostic"
+ANALYSIS_DIR="analysis/cifar100_diagnostic"
 
 EPOCHS_NP=20
 EPOCHS_DP=20
@@ -41,3 +42,5 @@ for seed in 0 1; do
     done
   done
 done
+
+python collect_reports.py --out_dir "$OUTDIR" --analysis_out_dir "$ANALYSIS_DIR"

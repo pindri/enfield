@@ -13,15 +13,10 @@ def main() -> None:
     ensure_dir(args.out_dir)
     ensure_dir(args.analysis_out_dir)
 
-    # Check and create folders.
-    report_dir = args.out_dir
-    analysis_out_dir = args.analysis_out_dir
+    df = load_reports(args.out_dir)
+    save_dataframe(df, f"{args.analysis_out_dir}/all_reports.csv")
 
-    df = load_reports(report_dir)
-    save_dataframe(df, f"{analysis_out_dir}/all_reports.csv")
-
-    print(f"Saved data from {report_dir} to {analysis_out_dir}/all_reports.csv")
-
+    print(f"Saved data from {args.out_dir} to {args.analysis_out_dir}/all_reports.csv")
 
 
 if __name__ == "__main__":

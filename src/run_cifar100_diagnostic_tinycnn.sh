@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# CIFAR100 diagnostic with TinyCNN (the default model in toy.py).
+# Kept separate from run_cifar100_diagnostic.sh to distinguish results
+# when the model architecture was being iterated.
+# Feeds analysis/cifar100_diagnostic_tinyCNN.
 
+set -euo pipefail
 mkdir -p logs
 
-DATASET="fashionmnist"
-OUTDIR="toy_out_fmnist_diagnostic"
-ANALYSIS_DIR="analysis/fmnist_diagnostic"
+DATASET="cifar100"
+OUTDIR="toy_out_cifar100_diagnostic_tinycnn"
+ANALYSIS_DIR="analysis/cifar100_diagnostic_tinyCNN"
 
-EPOCHS_NP=10
-EPOCHS_DP=4
+EPOCHS_NP=20
+EPOCHS_DP=20
 BATCH_SIZE=128
 TEMPERATURE=2.0
 BETA=1e-3
@@ -20,7 +24,7 @@ for seed in 0 1; do
   for cal_size in 2000 4000; do
     for nomcov in 0.75; do
       for ceps in 4.0 8.0; do
-        echo "[FMNIST-DIAG] seed=$seed cal_size=$cal_size nomcov=$nomcov ceps=$ceps"
+        echo "[CIFAR100-DIAG-TINYCNN] seed=$seed cal_size=$cal_size nomcov=$nomcov ceps=$ceps"
         python toy.py \
           --dataset "$DATASET" \
           --seed "$seed" \
@@ -37,7 +41,7 @@ for seed in 0 1; do
           --label_smoothing "$LABEL_SMOOTHING" \
           --verbose \
           --out_dir "$OUTDIR" \
-          2>&1 | tee "logs/fmnist_diag_seed${seed}_cal${cal_size}_nom${nomcov}_ceps${ceps}.log"
+          2>&1 | tee "logs/cifar100_tinycnn_diag_seed${seed}_cal${cal_size}_nom${nomcov}_ceps${ceps}.log"
       done
     done
   done

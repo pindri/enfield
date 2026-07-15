@@ -1,17 +1,24 @@
 import argparse
 import json
 import math
+import os
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
+from typing import Dict
 
+import torch
 from opacus import PrivacyEngine
-from torch.utils.data import random_split
+from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
 from conformal import aps_scores, split_conformal_threshold, summarize_scores, save_score_hist, summarize_set_sizes
 from dp import dp_histogram_quantile_threshold
-from utils import *
-from dataclasses import asdict, dataclass
+from models import TinyMLP, TinyCNNFMNIST, TinyCNN, MediumPowerfulCNN, inject_label_noise
+from utils import (
+    ensure_dir, make_reproducible, sha256_of_text,
+    predict_proba, evaluate_coverage_aps, train_epoch, accuracy,
+    ExperimentContract,
+)
 
 
 @dataclass
@@ -33,7 +40,6 @@ class ExperimentConfig:
     dp_eps_train: float = 4.0
     dp_delta: float = 1e-5
     dp_eps_cal: float = 1.0
-    # num_bins: int = 50
     num_bins: int = 100
     beta: float = 1e-3
     temperature: float = 1.0
@@ -105,8 +111,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     # Theoretical guarantee of what the coverage LB should be.
     coverage_lb_formal = max(0.0, 1.0 - alpha - args.beta)
 
-    # TODO: update this at some point.
-    contract = Contract(
+    contract = ExperimentContract(
         epsilon_train=float(args.dp_eps_train),
         delta=float(args.dp_delta),
         epsilon_cal=float(args.dp_eps_cal),
@@ -115,7 +120,6 @@ def run_experiment(args: ExperimentConfig) -> dict:
         num_bins=int(args.num_bins),
     )
 
-    # TODO: update this at some point.
     report: Dict = {
         "contract": asdict(contract),
         "meta": {
@@ -139,9 +143,6 @@ def run_experiment(args: ExperimentConfig) -> dict:
         num_classes = 10 if args.dataset == "cifar10" else 100
         model_np = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
         model_dp = TinyCNN(in_channels=3, num_classes=num_classes).to(device)
-
-        # model_np = DPFriendlyCNN(in_channels=3, num_classes=num_classes).to(device)
-        # model_dp = DPFriendlyCNN(in_channels=3, num_classes=num_classes).to(device)
 
         # model_np = MediumPowerfulCNN(in_channels=3, num_classes=num_classes).to(device)
         # model_dp = MediumPowerfulCNN(in_channels=3, num_classes=num_classes).to(device)
@@ -249,7 +250,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     print(f"[dp+nonprivcal] tau={tau_dp_nonpriv_cal:.4f} coverage={eval_dp_nonpriv_cal['coverage']:.4f} avg_set_size={eval_dp_nonpriv_cal['avg_set_size']:.3f}")
 
     # -----------------------------
-    # 3) DP calibration threshold via DP histogram quantile.
+    # DP calibration threshold via DP histogram quantile.
     # -----------------------------
     print("\n[stage] dp calibration (formal noisy cumulative-count quantile)")
     tau_dp_cal, dpcal_info = dp_histogram_quantile_threshold(
@@ -283,8 +284,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     certificate_width_tau = round(float(tau_q_k2 - tau_q_k), 4)
 
     crossing_index_dp = int(dpcal_info["crossing_index"])
-    # theorem_tau_ok = bool(tau_q_k <= tau_dp_cal <= tau_q_k2 + 1e-12)
-    tol = 1e-6  # Bit of tolerance because tiiiiny weird numbers break it.
+    tol = 1e-6  # Tolerance for floating-point edge cases at grid boundaries.
     theorem_tau_ok = bool(
         (tau_dp_cal >= tau_q_k - tol) and
         (tau_dp_cal <= tau_q_k2 + tol)
@@ -349,7 +349,7 @@ def run_experiment(args: ExperimentConfig) -> dict:
     }
 
     # -----------------------------
-    # 4) Contract-style PASS/FAIL checks.
+    # Contract-style PASS/FAIL checks.
     # -----------------------------
     # Formal check: theorem-certified lower bound meets the requested target.
     coverage_bound_formal_ok = coverage_lb_formal >= coverage_target
@@ -368,16 +368,11 @@ def run_experiment(args: ExperimentConfig) -> dict:
         "overall_empirical_ok": privacy_training_ok and coverage_empirical_ok,
     }
 
-    # Lightweight, made up "hashes" for things to look proper.
     contract_text = json.dumps(report["contract"], sort_keys=True)
     report["hashes"] = {
         "contract_sha256": sha256_of_text(contract_text),
         "script_sha256": sha256_of_text(open(__file__, "r", encoding="utf-8").read()),
     }
-
-    # Some histogramming because things are weird.
-    # save_score_hist(scores_cal_np, f"{args.out_dir}/np_scores_seed_{args.seed}.png", "NP APS scores")
-    # save_score_hist(scores_cal_dp, f"{args.out_dir}/dp_scores_seed_{args.seed}.png", "DP APS scores")
 
     if args.write_report:
         out_path = os.path.join(
@@ -511,14 +506,12 @@ def main():
     ap.add_argument("--dataset", type=str, default="cifar10",
                     choices=["mnist", "fashionmnist", "cifar10", "cifar100"])
 
-    # "Contract-like"-specific made-up knobs.
-    # ap.add_argument("--coverage", type=float, default=0.90)
     ap.add_argument("--coverage_target", type=float, default=0.90)
     ap.add_argument("--nominal_coverage", type=float, default=0.91)
     ap.add_argument("--dp_eps_train", type=float, default=4.0)
     ap.add_argument("--dp_delta", type=float, default=1e-5)
     ap.add_argument("--dp_eps_cal", type=float, default=1.0)
-    ap.add_argument("--num_bins", type=int, default=50)
+    ap.add_argument("--num_bins", type=int, default=100)
     ap.add_argument("--beta", type=float, default=1e-3)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--label_smoothing", type=float, default=0.0)

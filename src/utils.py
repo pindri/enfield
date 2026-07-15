@@ -35,108 +35,7 @@ def ensure_dir(path: str) -> None:
 
 
 # -----------------------------
-# Models.
-# -----------------------------
-
-class TinyMLP(nn.Module):
-    def __init__(self, in_dim=28 * 28, hidden=256, num_classes=10):
-        super().__init__()
-        self.fc1 = nn.Linear(in_dim, hidden)
-        self.fc2 = nn.Linear(hidden, num_classes)
-
-    def forward(self, x):
-        # x: (B, 1, 28, 28)
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        return self.fc2(x)
-
-class TinyCNNFMNIST(nn.Module):
-    def __init__(self, in_channels=1, num_classes=10):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(in_channels, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Linear(64 * 7 * 7, 128),
-            nn.ReLU(),
-            nn.Linear(128, num_classes),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-class TinyCNN(nn.Module):
-    def __init__(self, in_channels=3, num_classes=10):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(in_channels, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Linear(64 * 8 * 8, 128),
-            nn.ReLU(),
-            nn.Linear(128, num_classes),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-class MediumPowerfulCNN(nn.Module):
-    def __init__(self, in_channels=3, num_classes=10):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(in_channels, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(128, 128, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Linear(128 * 8 * 8, 256),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(256, num_classes),
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-def inject_label_noise(subset, noise_rate: float, num_classes: int, seed: int):
-    if noise_rate <= 0.0:
-        return
-
-    g = torch.Generator().manual_seed(seed)
-    base_ds = subset.dataset
-    idxs = subset.indices
-    n_flip = int(len(idxs) * noise_rate)
-    perm = torch.randperm(len(idxs), generator=g)[:n_flip]
-
-    if hasattr(base_ds, "targets"):
-        for p in perm.tolist():
-            j = idxs[p]
-            old = int(base_ds.targets[j])
-            new = torch.randint(low=0, high=num_classes - 1, size=(1,), generator=g).item()
-            if new >= old:
-                new += 1
-            base_ds.targets[j] = new
-    else:
-        raise ValueError("Dataset does not expose .targets for label corruption")
-
-# -----------------------------
-# Conformal stuff.
+# Conformal evaluation.
 # -----------------------------
 
 @torch.no_grad()
@@ -217,11 +116,11 @@ def accuracy(model, loader, device) -> float:
 
 
 # -----------------------------
-# Reporting and feasibility.
+# Reporting.
 # -----------------------------
 
 @dataclass
-class Contract:
+class ExperimentContract:
     epsilon_train: float
     delta: float
     epsilon_cal: float
@@ -229,14 +128,12 @@ class Contract:
     alpha: float
     num_bins: int
 
-    def is_feasible(self,) -> bool:
+    def is_feasible(self) -> bool:
         return True
 
 
 def load_reports(report_dir: str | Path) -> pd.DataFrame:
-    """
-    Load all report_*.json files and flatten the main fields used for plotting.
-    """
+    """Load all report_*.json files and flatten the main fields used for plotting."""
     report_dir = Path(report_dir)
     rows = []
 
@@ -310,16 +207,9 @@ def load_reports(report_dir: str | Path) -> pd.DataFrame:
             "crossing_index_dp": r["dp_calibration"]["crossing_index_dp"],
         }
 
-        # Useful derived fields.
-        row["empirical_margin_to_bound"] = (
-            row["test_coverage_dp_cal"] - row["coverage_lower_bound_formal"]
-        )
-        row["empirical_margin_to_target"] = (
-            row["test_coverage_dp_cal"] - row["coverage_target"]
-        )
-        row["empirical_margin_to_nominal"] = (
-            row["test_coverage_dp_cal"] - row["nominal_coverage"]
-        )
+        row["empirical_margin_to_bound"] = row["test_coverage_dp_cal"] - row["coverage_lower_bound_formal"]
+        row["empirical_margin_to_target"] = row["test_coverage_dp_cal"] - row["coverage_target"]
+        row["empirical_margin_to_nominal"] = row["test_coverage_dp_cal"] - row["nominal_coverage"]
         row["inflation_to_certificate_ratio"] = (
             row["observed_inflation_tau_grid"] / row["certificate_width_tau"]
             if row["certificate_width_tau"] > 0 else np.nan
@@ -330,8 +220,7 @@ def load_reports(report_dir: str | Path) -> pd.DataFrame:
     if not rows:
         raise FileNotFoundError(f"No report_*.json files found in {report_dir}")
 
-    df = pd.DataFrame(rows)
-    return df
+    return pd.DataFrame(rows)
 
 
 def save_dataframe(df: pd.DataFrame, out_csv: str | Path) -> None:

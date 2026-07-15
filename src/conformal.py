@@ -33,22 +33,6 @@ def aps_prediction_set_mask(probs_row: torch.Tensor, tau: float) -> torch.Tensor
     return mask
 
 
-def scores_non_aps(probs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-    probs = probs.clamp_min(1e-12)
-    labels = labels.long()
-    true_probs = probs[torch.arange(probs.size(0)), labels]
-    score = 1.0 - true_probs
-    return score.clamp(0.0, 1.0)
-
-
-def prediction_set_mask_non_aps(probs_row: torch.Tensor, tau: float) -> torch.Tensor:
-    probs_row = probs_row.clamp_min(1e-12)
-    mask = probs_row >= (1.0 - tau)
-    if not mask.any():
-        mask[probs_row.argmax()] = True
-    return mask
-
-
 def split_conformal_threshold(scores: torch.Tensor, alpha: float) -> float:
     """
     Standard split conformal threshold:

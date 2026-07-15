@@ -2,7 +2,7 @@ from dataclasses import dataclass, replace
 from typing import Optional
 
 from toy import ExperimentConfig, run_experiment
-from contract_card import *
+from contract_card import build_contract_card, print_contract_card, save_contract_card
 from utils import ensure_dir
 
 
@@ -97,9 +97,8 @@ def formal_check(cfg: ExperimentConfig, contract: Contract) -> dict:
     coverage_lower_bound_formal = cfg.nominal_coverage - cfg.beta
     coverage_bound_formal_ok = coverage_lower_bound_formal >= cfg.coverage_target
 
-    # TODO: Not the best namings.
-    privacy_training_ok = cfg.dp_eps_cal <= contract.max_dp_eps_cal
-    privacy_cal_ok = cfg.dp_eps_train <= contract.max_dp_eps_train
+    privacy_training_ok = cfg.dp_eps_train <= contract.max_dp_eps_train
+    privacy_cal_ok = cfg.dp_eps_cal <= contract.max_dp_eps_cal
 
     overall_formal_ok = (
         coverage_bound_formal_ok
@@ -196,9 +195,6 @@ def formal_frontier_candidates(formal_feasible: list[tuple[ExperimentConfig, dic
         key=lambda x: (x[0].nominal_coverage, -x[0].dp_eps_cal, -x[0].dp_eps_train)
     )
     return frontier
-
-def certificate_width(result: dict) -> float:
-    return float(result["full_report"]["dp_calibration"]["certificate_width_tau"])
 
 def summarize_frontier_points(points: list[tuple[ExperimentConfig, dict]]) -> list[dict]:
     out = []
@@ -488,7 +484,6 @@ def main():
     out_dir = "contracts/"
     ensure_dir(out_dir)
 
-    # This is a nice grid.
     grid = SearchGrid(
         dp_eps_train=[4.0],
         dp_eps_cal=[2.0, 4.0, 8.0],

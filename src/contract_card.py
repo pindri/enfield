@@ -245,7 +245,7 @@ def print_contract_card(card: dict):
             for k, v in ss["01_grid"].items():
                 print(f"{k}: {fmt_value(v)}")
 
-    # SOme overall printing.
+    # Overall status message.
     if card["01_decision"]["00_status"] == "FEASIBLE":
         print("\nInterpretation")
         print("--------------")
