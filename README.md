@@ -66,3 +66,8 @@ Results are saved to `contracts/`.
 ```bash
 bash test_run.sh
 ```
+
+## Acknowledgments
+This work was carried out under the ''Provable Policy-Driven Privacy Compliance'' action,
+which has received funding from the European Union, via the oc4-2025-TES-02 call 
+issued and implemented by the ENFIELD project, under the grant agreement No 101120657.
